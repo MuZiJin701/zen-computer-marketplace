@@ -26,7 +26,7 @@ from .plan import PlanIntegrityError, create_plan, load_plan, save_plan
 from .storage import json_safe
 from .transaction import TransactionStatus, TransactionStore, apply_plan, verify_plan
 
-DEFAULT_TARGETS = ("windows", "terminal", "vscode", "trae", "codex", "chrome")
+DEFAULT_TARGETS = ("windows", "terminal", "vscode", "trae", "chatgpt-app", "chrome")
 
 
 def _default_runtime_dir() -> Path:
@@ -350,7 +350,7 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
             target_instances.get("trae", {}),
             EditorSpec("trae", "", Path(), Path(), artifacts_dir=state_dir / "trae-artifacts"),
         )
-    codex_path = os.environ.get("ONE_TONE_CODEX_THEME_CONFIG")
+    chatgpt_app_path = os.environ.get("ONE_TONE_CHATGPT_APP_THEME_CONFIG")
     chrome_preferences = _configured_or_first(
         "ONE_TONE_CHROME_PREFERENCES",
         [localappdata / "Google/Chrome/User Data/Default/Preferences"],
@@ -371,8 +371,8 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
             registry[target] = UnsupportedAdapter(target)
         elif target == "trae":
             registry[target] = VSCodeFamilyAdapter(trae_spec)
-        elif target == "codex":
-            registry[target] = CodexAdapter(Path(codex_path) if codex_path else None)
+        elif target == "chatgpt-app":
+            registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None)
         elif target == "chrome":
             registry[target] = ChromeAdapter(state_dir / "chrome-themes", chrome_preferences if chrome_preferences.is_file() else None)
         else:

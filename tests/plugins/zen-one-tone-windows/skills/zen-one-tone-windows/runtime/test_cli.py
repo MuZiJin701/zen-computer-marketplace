@@ -8,9 +8,9 @@ from one_tone.transaction import TransactionRecord, TransactionStatus
 
 
 def test_preview_json_output_contains_plan_id_and_targets(tmp_path, capsys, monkeypatch):
-    monkeypatch.setenv("ONE_TONE_CODEX_THEME_CONFIG", str(tmp_path / "missing-config.toml"))
+    monkeypatch.setenv("ONE_TONE_CHATGPT_APP_THEME_CONFIG", str(tmp_path / "missing-config.toml"))
     code = main([
-        "preview", "#7C3AED", "--targets", "codex",
+        "preview", "#7C3AED", "--targets", "chatgpt-app",
         "--plans-dir", str(tmp_path / "plans"),
         "--state-dir", str(tmp_path / "state"),
         "--output", "json",
@@ -20,7 +20,7 @@ def test_preview_json_output_contains_plan_id_and_targets(tmp_path, capsys, monk
     payload = json.loads(capsys.readouterr().out)
     assert payload["command"] == "preview"
     assert payload["plan_id"].startswith("plan-")
-    assert payload["targets"][0]["target"] == "codex"
+    assert payload["targets"][0]["target"] == "chatgpt-app"
 
 
 def test_apply_json_error_is_machine_readable(capsys):
@@ -89,7 +89,7 @@ def test_preview_writes_plan_without_creating_transaction(tmp_path, capsys):
     transactions = tmp_path / "transactions"
 
     assert main([
-        "preview", "#7C3AED", "--targets", "codex,chrome",
+        "preview", "#7C3AED", "--targets", "chatgpt-app,chrome",
         "--plans-dir", str(plans), "--transactions-dir", str(transactions),
     ]) == 0
     assert list(plans.glob("*.json"))

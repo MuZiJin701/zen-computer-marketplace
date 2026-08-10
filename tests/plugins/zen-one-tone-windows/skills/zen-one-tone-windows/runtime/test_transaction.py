@@ -125,11 +125,11 @@ def test_apply_failure_rolls_back_only_failed_target(tmp_path):
 def test_apply_marks_mixed_success_and_skipped_targets_partial(tmp_path):
     config = tmp_path / "theme.json"
     config.write_text('{"theme": "original"}', encoding="utf-8")
-    plan = create_plan("#7C3AED", ["file-demo", "codex"], plan_id="plan-test-006")
+    plan = create_plan("#7C3AED", ["file-demo", "chatgpt-app"], plan_id="plan-test-006")
     store = TransactionStore(tmp_path / "transactions")
     adapters = {
         "file-demo": FileAdapter("file-demo", config),
-        "codex": UnsupportedAdapter("codex"),
+        "chatgpt-app": UnsupportedAdapter("chatgpt-app"),
     }
 
     record = apply_plan(plan, adapters, store, confirm=True)

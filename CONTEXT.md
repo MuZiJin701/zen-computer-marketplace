@@ -97,8 +97,12 @@ _Avoid_: Accent color 本身
 Plugin 内可独立分发的能力单元；其说明、引用资料、脚本和运行时项目都放在同一个 Skill 目录内。
 
 **Target**  
-一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、Codex 或 Chrome。  
+一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、ChatGPT desktop app 或 Chrome。
 _Avoid_: 应用（当 Windows 系统也在讨论范围内时）
+
+**ChatGPT desktop app**
+当前 ChatGPT Windows/macOS 桌面产品，包含 Chat、Work 和 Codex 视图；本项目的 `chatgpt-app` Target 只管理桌面 App 的用户界面主题，不管理 Codex CLI/TUI。
+_Avoid_: Codex CLI、Windows Terminal 主题
 
 **Theme registration**
 

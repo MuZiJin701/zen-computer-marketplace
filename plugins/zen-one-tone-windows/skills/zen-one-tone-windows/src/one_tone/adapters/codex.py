@@ -12,7 +12,7 @@ from ..plan import Plan
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
 
-CODEX_CONFIG_SCHEMA_V1 = "codex-config-v1"
+CHATGPT_APP_CONFIG_SCHEMA_V1 = "chatgpt-app-config-v1"
 _THEME_TABLES = (
     "desktop.appearanceLightChromeTheme",
     "desktop.appearanceDarkChromeTheme",
@@ -81,7 +81,7 @@ def locate_verified_codex_config(explicit_path: Path | None = None) -> Path | No
 
 
 def _skip_result(message: str) -> AdapterResult:
-    return AdapterResult("codex", "skipped", False, False, message)
+    return AdapterResult("chatgpt-app", "skipped", False, False, message)
 
 
 def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, Any]]:
@@ -150,7 +150,7 @@ def _matches_plan(payload: dict[str, Any], plan: Plan) -> bool:
 
 
 class CodexAdapter:
-    target = "codex"
+    target = "chatgpt-app"
 
     def __init__(self, config_path: Path | None = None) -> None:
         self.config_path = locate_verified_codex_config(config_path)
@@ -165,62 +165,62 @@ class CodexAdapter:
 
     def detect(self) -> AdapterResult:
         if self.config_path is None:
-            return _skip_result(f"Codex config.toml does not match {CODEX_CONFIG_SCHEMA_V1}")
+            return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         if self._document() is None:
-            return _skip_result(f"Codex config.toml does not match {CODEX_CONFIG_SCHEMA_V1}")
+            return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         return AdapterResult(
             self.target,
             "ok",
             False,
             True,
-            f"verified Codex config.toml: {self.config_path}",
-            version=CODEX_CONFIG_SCHEMA_V1,
+            f"verified ChatGPT App config.toml: {self.config_path}",
+            version=CHATGPT_APP_CONFIG_SCHEMA_V1,
             metadata={"field_capabilities": field_capabilities(self.target)},
         )
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
         if self._document() is None:
-            return _skip_result(f"Codex config.toml does not match {CODEX_CONFIG_SCHEMA_V1}")
+            return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(self.config_path, backup_dir / "codex-config.toml")
-            return AdapterResult(self.target, "ok", False, True, "Codex config.toml snapshot saved", version=CODEX_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "ok", False, True, "ChatGPT App config.toml snapshot saved", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
         except OSError as error:
-            return AdapterResult(self.target, "failed", False, False, f"Codex snapshot failed: {error}", version=CODEX_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "failed", False, False, f"ChatGPT App snapshot failed: {error}", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
 
     def apply(self, plan: Plan) -> AdapterResult:
         document = self._document()
         if document is None:
-            return _skip_result(f"Codex config.toml does not match {CODEX_CONFIG_SCHEMA_V1}")
+            return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         original, _ = document
         updated = _replace_verified_values(original, {mode: plan.palette_for(mode) for mode in ("light", "dark")})
         try:
             atomic_write_text(self.config_path, updated, newline="")
-            return AdapterResult(self.target, "ok", updated != original, False, "Codex config.toml theme written", version=CODEX_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
         except OSError as error:
-            return AdapterResult(self.target, "failed", False, False, f"Codex apply failed: {error}", version=CODEX_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "failed", False, False, f"ChatGPT App apply failed: {error}", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
 
     def verify(self, plan: Plan) -> AdapterResult:
         document = self._document()
         if document is None:
-            return _skip_result(f"Codex config.toml does not match {CODEX_CONFIG_SCHEMA_V1}")
+            return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         verified = _matches_plan(document[1], plan)
         return AdapterResult(
             self.target,
             "ok" if verified else "failed",
             False,
             verified,
-            "Codex config.toml theme verified" if verified else "Codex config.toml theme does not match Plan",
-            version=CODEX_CONFIG_SCHEMA_V1,
+            "ChatGPT App config.toml theme verified" if verified else "ChatGPT App config.toml theme does not match Plan",
+            version=CHATGPT_APP_CONFIG_SCHEMA_V1,
             metadata={"field_capabilities": field_capabilities(self.target)},
         )
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:
         if self.config_path is None:
-            return _skip_result(f"Codex config.toml does not match {CODEX_CONFIG_SCHEMA_V1}")
+            return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         backup = backup_dir / "codex-config.toml"
         if not backup.is_file():
-            return AdapterResult(self.target, "failed", False, False, "Codex config.toml backup not found", version=CODEX_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "failed", False, False, "ChatGPT App config.toml backup not found", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
         try:
             shutil.copy2(backup, self.config_path)
             restored = self.config_path.read_bytes() == backup.read_bytes()
@@ -229,8 +229,8 @@ class CodexAdapter:
                 "ok" if restored else "failed",
                 True,
                 restored,
-                "Codex config.toml restored" if restored else "Codex config.toml restore verification failed",
-                version=CODEX_CONFIG_SCHEMA_V1,
+                "ChatGPT App config.toml restored" if restored else "ChatGPT App config.toml restore verification failed",
+                version=CHATGPT_APP_CONFIG_SCHEMA_V1,
             )
         except OSError as error:
-            return AdapterResult(self.target, "failed", False, False, f"Codex rollback failed: {error}", version=CODEX_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "failed", False, False, f"ChatGPT App rollback failed: {error}", version=CHATGPT_APP_CONFIG_SCHEMA_V1)

@@ -176,6 +176,8 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
         raise PlanIntegrityError(f"Plan targets are invalid for {plan_id}")
     for target in payload["targets"]:
         validate_safe_component(target, "target")
+        if target == "codex":
+            raise PlanIntegrityError(f"legacy target codex is no longer supported in Plan {plan_id}")
     payload["targets"] = tuple(payload["targets"])
     field_capabilities = payload.get("field_capabilities", expected_capabilities(payload["targets"]))
     if not isinstance(field_capabilities, dict):

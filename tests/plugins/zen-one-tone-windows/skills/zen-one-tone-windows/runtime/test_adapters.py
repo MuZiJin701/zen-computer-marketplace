@@ -14,7 +14,7 @@ def test_adapter_result_stores_user_action_and_version():
 
 
 def test_unsupported_adapter_never_claims_success():
-    result = UnsupportedAdapter("codex").detect()
+    result = UnsupportedAdapter("chatgpt-app").detect()
     assert result.status == "skipped"
     assert result.changed is False
 

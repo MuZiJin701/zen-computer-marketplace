@@ -94,7 +94,7 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 ## 注意事项
 
-- Seed Color 作为 Codex 和 Windows 的 Theme anchor/Accent source；大面积 Codex Surface 和 Windows 壁纸使用 appearance-safe 的 Tonal surface，避免纯色铺满。Codex 主题保持用户当前 `appearanceTheme`，并使用高对比度配置。
+- Seed Color 作为 ChatGPT App 和 Windows 的 Theme anchor/Accent source；大面积 ChatGPT App Surface 和 Windows 壁纸使用 appearance-safe 的 Tonal surface，避免纯色铺满。ChatGPT App 主题保持用户当前 `appearanceTheme`，并使用高对比度配置。
 - Windows Terminal 会为所有已发现 Profile 写入成对 Light/Dark Scheme、ANSI 颜色和 Tab 颜色，Profile 随 Windows 系统模式切换，窗口主题使用 `system`，不强制 Windows 深色模式；可选地发现并回滚 Windows Terminal 会话中的 PSReadLine 预测颜色。
 - VS Code 和 TRAE 主题覆盖标准 Workbench、Git decoration、编辑器选择/光标、终端 ANSI、链接、通知和语义高亮字段，并启用应用自带的系统模式自动跟随；各自的 AI 专属面板仍由应用自行决定。
 - Windows 开启“自动从背景中选取强调色”时，系统可能覆盖固定强调色；想保持稳定颜色，请在 Windows 设置中关闭该选项。

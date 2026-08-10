@@ -27,6 +27,16 @@ def test_plan_hash_rejects_tampering(tmp_path):
         load_plan("plan-test-002", tmp_path)
 
 
+def test_plan_rejects_legacy_codex_target(tmp_path):
+    payload = create_plan("#7C3AED", ["chatgpt-app"], plan_id="plan-legacy-codex-001").to_dict()
+    payload["targets"] = ["codex"]
+    payload["hash"] = compute_plan_hash(payload)
+    (tmp_path / "plan-legacy-codex-001.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PlanIntegrityError, match="legacy target codex"):
+        load_plan("plan-legacy-codex-001", tmp_path)
+
+
 def test_plan_rejects_path_like_targets_and_plan_ids(tmp_path):
     with pytest.raises(ValueError, match="safe"):
         create_plan("#7C3AED", ["../../escaped"], plan_id="plan-safe-001")

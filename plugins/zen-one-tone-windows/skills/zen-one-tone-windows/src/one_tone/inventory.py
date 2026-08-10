@@ -48,7 +48,7 @@ FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
         "gitDecoration.stageDeletedResourceForeground", "gitDecoration.submoduleResourceForeground",
     ),
     "trae": (),
-    "codex": (
+    "chatgpt-app": (
         "appearanceLightChromeTheme.surface", "appearanceLightChromeTheme.ink", "appearanceLightChromeTheme.accent",
         "appearanceLightChromeTheme.contrast", "appearanceLightChromeTheme.semanticColors.diffAdded",
         "appearanceLightChromeTheme.semanticColors.diffRemoved", "appearanceLightChromeTheme.semanticColors.skill",
@@ -73,7 +73,7 @@ _SOURCES = {
     "terminal": "https://learn.microsoft.com/en-us/windows/terminal/customize-settings/color-schemes",
     "vscode": "https://code.visualstudio.com/api/references/theme-color",
     "trae": "https://code.visualstudio.com/api/references/theme-color",
-    "codex": "verified-v1-runtime-schema",
+    "chatgpt-app": "verified-v1-runtime-schema",
     "chrome": "https://developer.chrome.com/docs/extensions/develop/ui/themes",
 }
 _BASELINES = {
@@ -81,7 +81,7 @@ _BASELINES = {
     "terminal": "Windows Terminal documented profile schema",
     "vscode": "VS Code theme color reference",
     "trae": "installed public Workbench-compatible schema",
-    "codex": "verified v1 color schema",
+    "chatgpt-app": "verified ChatGPT App v1 color schema",
     "chrome": "Chrome Manifest V3 theme schema",
 }
 _INVENTORY_VERSION = "2026-08-03.v2"
@@ -91,7 +91,7 @@ _REFERENCE_THEMES = {
     "terminal": "Windows Terminal built-in Light scheme",
     "vscode": "VS Code Light Modern 1.131.0",
     "trae": "TRAE Light Modern 2.3.61406",
-    "codex": "Codex verified v1 Light theme table",
+    "chatgpt-app": "ChatGPT App verified v1 Light theme table",
     "chrome": "Chrome Manifest V3 Light theme",
 }
 _EVIDENCE_SOURCES = {
@@ -99,7 +99,7 @@ _EVIDENCE_SOURCES = {
     "terminal": "official schema plus built-in Light scheme",
     "vscode": "installed built-in Light theme plus official schema",
     "trae": "installed built-in Light theme plus official schema",
-    "codex": "verified runtime schema",
+    "chatgpt-app": "verified ChatGPT App runtime schema",
     "chrome": "official schema",
 }
 
@@ -158,8 +158,8 @@ def _field_region(target: str, name: str) -> str:
         return "editor" if lowered.startswith("editor") or lowered.startswith("terminal") else "workbench"
     if target == "chrome":
         return "browser chrome"
-    if target == "codex":
-        return "codex"
+    if target == "chatgpt-app":
+        return "ChatGPT App"
     return target
 
 

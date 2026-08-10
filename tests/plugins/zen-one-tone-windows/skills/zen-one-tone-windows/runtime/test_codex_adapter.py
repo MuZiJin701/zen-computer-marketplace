@@ -2,7 +2,7 @@ import json
 import tomllib
 
 from one_tone.adapters.codex import (
-    CODEX_CONFIG_SCHEMA_V1,
+    CHATGPT_APP_CONFIG_SCHEMA_V1,
     CodexAdapter,
     default_codex_config_path,
     locate_verified_codex_config,
@@ -23,7 +23,7 @@ def test_codex_v1_config_is_detected(tmp_path):
     path = write_codex_v1_fixture(tmp_path / "config.toml")
     result = CodexAdapter(path).detect()
     assert result.status == "ok"
-    assert result.version == CODEX_CONFIG_SCHEMA_V1
+    assert result.version == CHATGPT_APP_CONFIG_SCHEMA_V1
 
 
 def test_codex_system_appearance_mode_is_detected(tmp_path):
@@ -48,7 +48,7 @@ def test_codex_unknown_config_is_skipped(tmp_path):
     path.write_text("[desktop]\nappearanceTheme = 'dark'\n", encoding="utf-8")
     result = CodexAdapter(path).detect()
     assert result.status == "skipped"
-    assert "codex-config-v1" in result.message
+    assert "chatgpt-app-config-v1" in result.message
 
 
 def test_codex_malformed_toml_is_skipped(tmp_path):
@@ -61,12 +61,12 @@ def test_codex_v1_fixture_applies_verifies_and_restores_preserving_fields(tmp_pa
     path = write_codex_v1_fixture(tmp_path / "config.toml")
     original = path.read_bytes()
     adapter = CodexAdapter(path)
-    plan = create_plan("#00A86B", ["codex"], plan_id="plan-codex-v1-001")
+    plan = create_plan("#00A86B", ["chatgpt-app"], plan_id="plan-chatgpt-app-v1-001")
 
     assert adapter.snapshot(tmp_path / "backup").status == "ok"
     applied = adapter.apply(plan)
     assert applied.status == "ok"
-    assert applied.version == CODEX_CONFIG_SCHEMA_V1
+    assert applied.version == CHATGPT_APP_CONFIG_SCHEMA_V1
 
     payload = tomllib.loads(path.read_text(encoding="utf-8"))
     for mode, palette_mode in (("appearanceLightChromeTheme", "light"), ("appearanceDarkChromeTheme", "dark")):
@@ -92,7 +92,7 @@ def test_codex_apply_raises_existing_theme_contrast_to_maximum(tmp_path):
     path = write_codex_v1_fixture(tmp_path / "config.toml")
     path.write_text(path.read_text(encoding="utf-8").replace("contrast = 100", "contrast = 20"), encoding="utf-8")
     adapter = CodexAdapter(path)
-    plan = create_plan("#10B981", ["codex"], plan_id="plan-codex-contrast-100-001")
+    plan = create_plan("#10B981", ["chatgpt-app"], plan_id="plan-chatgpt-app-contrast-100-001")
 
     assert adapter.apply(plan).status == "ok"
 
