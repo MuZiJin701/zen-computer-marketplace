@@ -3,6 +3,7 @@ import subprocess
 import zipfile
 
 from one_tone.adapters.vscode_family import EditorSpec, VSCodeFamilyAdapter, build_theme_json, build_vsix
+from one_tone.palette import contrast_ratio
 from one_tone.plan import create_plan
 
 
@@ -95,6 +96,18 @@ def test_editor_theme_uses_matching_foregrounds_for_surface_and_background():
     palette = plan.palette_for(plan.mode)
     assert colors["editor.foreground"] == palette["foreground"]
     assert colors["panel.foreground"] == palette["background_foreground"]
+
+
+def test_editor_theme_pairs_all_list_selection_states():
+    plan = create_plan("#10B981", ["trae"], plan_id="plan-editor-list-selection-001", mode="light")
+
+    colors = build_theme_json(plan, "One Tone trae")["colors"]
+    palette = plan.palette_for("light")
+
+    for state in ("activeSelection", "inactiveSelection", "focus"):
+        assert colors[f"list.{state}Background"] == palette["selection_background"]
+        assert colors[f"list.{state}Foreground"] == palette["selection_foreground"]
+        assert contrast_ratio(colors[f"list.{state}Foreground"], colors[f"list.{state}Background"]) >= 4.5
 
 
 def test_light_editor_theme_keeps_dense_primary_text_on_light_surfaces():

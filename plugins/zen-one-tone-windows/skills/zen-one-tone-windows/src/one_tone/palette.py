@@ -115,16 +115,36 @@ def _oklab_delta_e(first: str, second: str) -> float:
 
 def _oklch_color(hue: float, lightness: float, chroma: float) -> str:
     angle = hue * 2 * math.pi
-    a = chroma * math.cos(angle)
-    b = chroma * math.sin(angle)
-    l = lightness + 0.3963377774 * a + 0.2158037573 * b
-    m = lightness - 0.1055613458 * a - 0.0638541728 * b
-    s = lightness - 0.0894841775 * a - 1.2914855480 * b
-    l, m, s = l**3, m**3, s**3
-    red = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
-    green = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
-    blue = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
-    return _to_hex(tuple(round(max(0.0, min(1.0, _linear_to_srgb(channel))) * 255) for channel in (red, green, blue)))
+
+    def linear_rgb(candidate_chroma: float) -> tuple[float, float, float]:
+        a = candidate_chroma * math.cos(angle)
+        b = candidate_chroma * math.sin(angle)
+        l = lightness + 0.3963377774 * a + 0.2158037573 * b
+        m = lightness - 0.1055613458 * a - 0.0638541728 * b
+        s = lightness - 0.0894841775 * a - 1.2914855480 * b
+        l, m, s = l**3, m**3, s**3
+        return (
+            4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+        )
+
+    target_chroma = max(0.0, chroma)
+    rgb = linear_rgb(target_chroma)
+    if not all(0.0 <= channel <= 1.0 for channel in rgb):
+        lower, upper = 0.0, target_chroma
+        for _ in range(16):
+            candidate = (lower + upper) / 2
+            candidate_rgb = linear_rgb(candidate)
+            if all(0.0 <= channel <= 1.0 for channel in candidate_rgb):
+                lower = candidate
+                rgb = candidate_rgb
+            else:
+                upper = candidate
+    return _to_hex(tuple(
+        round(max(0.0, min(1.0, _linear_to_srgb(channel))) * 255)
+        for channel in rgb
+    ))
 
 
 def _blend(first: str, second: str, second_weight: float) -> str:

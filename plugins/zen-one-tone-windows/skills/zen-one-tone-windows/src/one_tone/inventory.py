@@ -32,7 +32,8 @@ FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
         "tab.activeBorderTop", "panel.background", "panel.foreground", "panel.border", "panelTitle.activeBorder",
         "panelTitle.activeForeground", "panelTitle.inactiveForeground", "statusBar.background", "statusBar.foreground", "statusBar.border",
         "input.background", "input.foreground", "input.border", "input.placeholderForeground", "dropdown.background", "dropdown.foreground",
-        "list.activeSelectionBackground", "list.activeSelectionForeground", "list.inactiveSelectionForeground", "list.focusForeground",
+        "list.activeSelectionBackground", "list.activeSelectionForeground", "list.inactiveSelectionBackground", "list.inactiveSelectionForeground",
+        "list.focusBackground", "list.focusForeground",
         "list.highlightForeground", "list.focusHighlightForeground", "list.hoverBackground", "badge.background", "badge.foreground",
         "terminal.background", "terminal.foreground", "terminalCursor.foreground", "terminal.ansiBlack", "terminal.ansiRed",
         "terminal.ansiGreen", "terminal.ansiYellow", "terminal.ansiBlue", "terminal.ansiMagenta", "terminal.ansiCyan", "terminal.ansiWhite",
@@ -104,6 +105,14 @@ _EVIDENCE_SOURCES = {
     "chatgpt-app": "verified ChatGPT App runtime schema",
     "chrome": "official schema",
 }
+_LIST_SELECTION_FIELDS = frozenset({
+    "list.activeselectionbackground",
+    "list.activeselectionforeground",
+    "list.inactiveselectionbackground",
+    "list.inactiveselectionforeground",
+    "list.focusbackground",
+    "list.focusforeground",
+})
 
 
 def _text_class(name: str) -> str:
@@ -112,6 +121,8 @@ def _text_class(name: str) -> str:
         return "semantic"
     if lowered in {"inlineprediction", "listprediction", "listpredictionselected"}:
         return "secondary" if lowered != "listpredictionselected" else "state"
+    if lowered in _LIST_SELECTION_FIELDS:
+        return "state"
     if any(token in lowered for token in ("placeholder", "disabled", "inactive", "description")):
         return "secondary"
     if any(token in lowered for token in (
@@ -131,6 +142,8 @@ def _paired_background_role(name: str, text_class: str) -> str:
     if text_class == "none":
         return "not-applicable"
     lowered = name.casefold()
+    if lowered in _LIST_SELECTION_FIELDS:
+        return "selection"
     if "selection" in lowered or lowered == "listpredictionselected":
         return "selection"
     if lowered.startswith("gitdecoration."):
@@ -167,6 +180,8 @@ def _field_region(target: str, name: str) -> str:
 
 def _field_role(name: str) -> str:
     lowered = name.casefold()
+    if lowered in _LIST_SELECTION_FIELDS:
+        return "selection"
     if lowered.startswith("gitdecoration."):
         if any(token in lowered for token in ("added", "untracked", "stagemodified")):
             return "success_text"

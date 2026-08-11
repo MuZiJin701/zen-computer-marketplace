@@ -70,6 +70,13 @@ def test_plan_persists_both_mode_palettes_and_capabilities(tmp_path):
     assert loaded.field_capabilities["chrome"]["frame"] == "supported"
 
 
+def test_plan_includes_public_list_selection_backgrounds_for_trae():
+    plan = create_plan("#10B981", ["trae"], plan_id="plan-trae-list-selection-001")
+
+    assert plan.field_capabilities["trae"]["list.inactiveSelectionBackground"] == "supported"
+    assert plan.field_capabilities["trae"]["list.focusBackground"] == "supported"
+
+
 def test_plan_persists_target_instance_paths_and_hashes_them(tmp_path):
     instances = {
         "vscode": {

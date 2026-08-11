@@ -11,6 +11,7 @@ from one_tone.palette import (
     validate_mode_coherence,
     validate_palette,
 )
+from one_tone.plan import create_plan
 
 
 def _hue(color: str) -> float:
@@ -20,6 +21,11 @@ def _hue(color: str) -> float:
 
 def _circular_hue_distance(first: str, second: str) -> float:
     distance = abs(_hue(first) - _hue(second))
+    return min(distance, 1 - distance)
+
+
+def _oklch_hue_distance(first: str, second: str) -> float:
+    distance = abs(_oklch_components(first)[2] - _oklch_components(second)[2])
     return min(distance, 1 - distance)
 
 
@@ -75,8 +81,11 @@ def test_green_seed_tints_background_and_surface():
     assert int(palette["background"][3:5], 16) > int(palette["background"][5:7], 16)
 
 
-def test_legacy_single_palette_keeps_original_accent_selection():
-    assert generate_palette("#7C3AED")["accent"] == "#E8D1FF"
+def test_legacy_single_palette_keeps_the_seed_surface_and_accent_hue():
+    palette = generate_palette("#7C3AED")
+
+    assert palette["surface"] == "#7C3AED"
+    assert _oklch_hue_distance("#7C3AED", palette["accent"]) <= 0.04
 
 
 def test_surface_text_uses_the_4_5_minimum_to_preserve_more_seed_colors():
@@ -183,6 +192,19 @@ def test_explicit_modes_validate_coherence_for_representative_seed_colors():
     for seed in ("#FF0000", "#00A86B", "#00FFFF", "#010101", "#FAFAFA"):
         palettes = {mode: generate_palette(seed, mode) for mode in ("light", "dark")}
         assert validate_mode_coherence(seed, palettes) == []
+
+
+def test_saturated_hue_sweep_creates_coherent_plans():
+    for index, seed in enumerate((
+        "#E63939", "#E67A17", "#E6A117", "#C9E617", "#52E617", "#17E68A",
+        "#17C7E6", "#1768E6", "#6B17E6", "#C217E6", "#E61796",
+    )):
+        plan = create_plan(seed, ["trae"], plan_id=f"plan-hue-sweep-{index:03d}")
+
+        assert validate_mode_coherence(seed, plan.palettes) == []
+        for palette in plan.palettes.values():
+            for role in ("accent", "border", "selection_background"):
+                assert _oklch_hue_distance(seed, palette[role]) <= 0.04
 
 
 def test_extreme_seed_colors_keep_tonal_surfaces_and_readable_interactions():

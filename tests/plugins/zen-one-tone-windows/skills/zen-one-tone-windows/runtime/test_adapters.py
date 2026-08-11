@@ -57,6 +57,17 @@ def test_field_inventory_classifies_text_evidence_and_opacity_policy():
 
     assert fields["editor.placeholder.foreground"]["text_class"] == "secondary"
     assert fields["editorError.foreground"]["text_class"] == "state"
+    for name in (
+        "list.activeSelectionBackground",
+        "list.activeSelectionForeground",
+        "list.inactiveSelectionBackground",
+        "list.inactiveSelectionForeground",
+        "list.focusBackground",
+        "list.focusForeground",
+    ):
+        assert fields[name]["visual_role"] == "selection"
+        assert fields[name]["text_class"] == "state"
+        assert fields[name]["paired_background_role"] == "selection"
 
 
 def test_field_inventory_keeps_git_and_prediction_text_semantic():
