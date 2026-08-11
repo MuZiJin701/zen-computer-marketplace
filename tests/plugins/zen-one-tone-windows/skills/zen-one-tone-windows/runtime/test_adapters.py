@@ -71,3 +71,14 @@ def test_field_inventory_keeps_git_and_prediction_text_semantic():
     terminal = {entry["technical_field"]: entry for entry in field_inventory_for("terminal")}
     assert terminal["InlinePrediction"]["visual_role"] == "muted_foreground"
     assert terminal["ListPredictionSelected"]["paired_background_role"] == "selection"
+
+
+def test_chatgpt_app_inventory_includes_theme_structure_and_chrome_settings():
+    from one_tone.inventory import field_inventory_for
+
+    fields = {entry["technical_field"]: entry for entry in field_inventory_for("chatgpt-app")}
+
+    assert fields["appearanceLightChromeTheme.fonts"]["field_category"] == "theme_structure"
+    assert fields["appearanceDarkChromeTheme.fonts"]["field_category"] == "theme_structure"
+    assert fields["appearanceLightChromeTheme.opaqueWindows"]["field_category"] == "display_property"
+    assert fields["appearanceDarkChromeTheme.contrast"]["field_category"] == "display_property"

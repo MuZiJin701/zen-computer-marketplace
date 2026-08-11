@@ -100,3 +100,106 @@ def test_codex_apply_raises_existing_theme_contrast_to_maximum(tmp_path):
     assert payload["desktop"]["appearanceTheme"] == "dark"
     assert payload["desktop"]["appearanceLightChromeTheme"]["contrast"] == 100
     assert payload["desktop"]["appearanceDarkChromeTheme"]["contrast"] == 100
+
+
+def test_codex_apply_repairs_missing_fonts_and_enforces_solid_chrome(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    text = path.read_text(encoding="utf-8").replace("contrast = 100", "contrast = 20").replace(
+        "opaqueWindows = true", "opaqueWindows = false"
+    )
+    for mode in ("appearanceLightChromeTheme", "appearanceDarkChromeTheme"):
+        text = text.replace(f'\n[desktop.{mode}.fonts]\neditor = "keep"\n', "\n")
+    path.write_text(text, encoding="utf-8")
+    original = path.read_bytes()
+    adapter = CodexAdapter(path)
+    plan = create_plan("#10B981", ["chatgpt-app"], plan_id="plan-chatgpt-app-repair-001")
+
+    detected = adapter.detect()
+    assert detected.status == "ok"
+    assert detected.verified is False
+    assert "appearanceLightChromeTheme.fonts" in detected.message
+    assert "appearanceDarkChromeTheme.fonts" in detected.message
+    assert path.read_bytes() == original
+    assert adapter.snapshot(tmp_path / "backup").status == "ok"
+    assert adapter.apply(plan).status == "ok"
+
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    for mode in ("appearanceLightChromeTheme", "appearanceDarkChromeTheme"):
+        theme = payload["desktop"][mode]
+        assert theme["fonts"] == {}
+        assert theme["opaqueWindows"] is True
+        assert theme["contrast"] == 100
+    assert adapter.verify(plan).verified is True
+    assert adapter.rollback(tmp_path / "backup").verified is True
+    assert path.read_bytes() == original
+
+
+def test_codex_verify_requires_fonts_solid_chrome_and_maximum_contrast(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    adapter = CodexAdapter(path)
+    plan = create_plan("#10B981", ["chatgpt-app"], plan_id="plan-chatgpt-app-verify-001")
+
+    assert adapter.apply(plan).status == "ok"
+    text = path.read_text(encoding="utf-8").replace(
+        '\n[desktop.appearanceLightChromeTheme.fonts]\neditor = "keep"\n', "\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    assert adapter.verify(plan).verified is False
+
+    assert adapter.apply(plan).status == "ok"
+    path.write_text(path.read_text(encoding="utf-8").replace("opaqueWindows = true", "opaqueWindows = false"), encoding="utf-8")
+    assert adapter.verify(plan).verified is False
+
+    assert adapter.apply(plan).status == "ok"
+    path.write_text(path.read_text(encoding="utf-8").replace("contrast = 100", "contrast = 20"), encoding="utf-8")
+    assert adapter.verify(plan).verified is False
+
+
+def test_codex_apply_preserves_existing_font_values_while_repairing_other_mode(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    text = path.read_text(encoding="utf-8").replace(
+        '\n[desktop.appearanceLightChromeTheme.fonts]\neditor = "keep"\n', "\n"
+    ).replace(
+        '[desktop.appearanceDarkChromeTheme.fonts]\neditor = "keep"',
+        '[desktop.appearanceDarkChromeTheme.fonts]\nui = "Inter"\ncode = "JetBrains Mono"',
+    )
+    path.write_text(text, encoding="utf-8")
+    adapter = CodexAdapter(path)
+    plan = create_plan("#10B981", ["chatgpt-app"], plan_id="plan-chatgpt-app-fonts-001")
+
+    assert adapter.apply(plan).status == "ok"
+
+    themes = tomllib.loads(path.read_text(encoding="utf-8"))["desktop"]
+    assert themes["appearanceLightChromeTheme"]["fonts"] == {}
+    assert themes["appearanceDarkChromeTheme"]["fonts"] == {"ui": "Inter", "code": "JetBrains Mono"}
+
+
+def test_codex_apply_preserves_existing_empty_fonts_tables(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    path.write_text(path.read_text(encoding="utf-8").replace('editor = "keep"\n', ""), encoding="utf-8")
+    adapter = CodexAdapter(path)
+    plan = create_plan("#10B981", ["chatgpt-app"], plan_id="plan-chatgpt-app-empty-fonts-001")
+
+    assert adapter.detect().verified is True
+    assert adapter.apply(plan).status == "ok"
+
+    themes = tomllib.loads(path.read_text(encoding="utf-8"))["desktop"]
+    assert themes["appearanceLightChromeTheme"]["fonts"] == {}
+    assert themes["appearanceDarkChromeTheme"]["fonts"] == {}
+
+
+def test_codex_wrong_type_fonts_are_skipped_without_writing(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            '\n[desktop.appearanceLightChromeTheme.fonts]\neditor = "keep"\n', '\nfonts = "unsupported"\n'
+        ),
+        encoding="utf-8",
+    )
+    original = path.read_bytes()
+    adapter = CodexAdapter(path)
+    plan = create_plan("#10B981", ["chatgpt-app"], plan_id="plan-chatgpt-app-invalid-fonts-001")
+
+    assert adapter.detect().status == "skipped"
+    assert adapter.apply(plan).status == "skipped"
+    assert path.read_bytes() == original

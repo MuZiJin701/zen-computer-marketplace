@@ -92,6 +92,7 @@ def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[
             "accent": palette["accent"],
             "contrast": 100,
             "ink": palette["foreground"],
+            "opaqueWindows": True,
             "surface": palette["surface"],
         }
         updates[f"{table_name}.semanticColors"] = {
@@ -102,7 +103,20 @@ def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[
     return updates
 
 
-def _replace_verified_values(text: str, palettes: Mapping[str, Mapping[str, str]]) -> str:
+def _missing_font_tables(payload: dict[str, Any]) -> tuple[str, ...]:
+    desktop = payload["desktop"]
+    return tuple(
+        table_name
+        for table_name in _THEME_TABLES
+        if "fonts" not in desktop[table_name.split(".", 1)[1]]
+    )
+
+
+def _replace_verified_values(
+    text: str,
+    palettes: Mapping[str, Mapping[str, str]],
+    missing_font_tables: tuple[str, ...],
+) -> str:
     updates = _theme_updates(palettes)
     section = ""
     output: list[str] = []
@@ -121,6 +135,10 @@ def _replace_verified_values(text: str, palettes: Mapping[str, Mapping[str, str]
             continue
         newline = assignment.group(5) or ""
         output.append(f"{assignment.group(1)}{assignment.group(2)}{assignment.group(3)}{json.dumps(replacement)}{newline}")
+    for table_name in missing_font_tables:
+        if output and not output[-1].endswith(("\n", "\r")):
+            output.append("\n")
+        output.append(f"\n[{table_name}.fonts]\n")
     return "".join(output)
 
 
@@ -133,9 +151,12 @@ def _matches_plan(payload: dict[str, Any], plan: Plan) -> bool:
             "accent": palette["accent"],
             "contrast": 100,
             "ink": palette["foreground"],
+            "opaqueWindows": True,
             "surface": palette["surface"],
         }
         if any(theme.get(key) != value for key, value in expected.items()):
+            return False
+        if not isinstance(theme.get("fonts"), dict):
             return False
         semantic = theme.get("semanticColors")
         if isinstance(semantic, dict):
@@ -166,14 +187,21 @@ class CodexAdapter:
     def detect(self) -> AdapterResult:
         if self.config_path is None:
             return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
-        if self._document() is None:
+        document = self._document()
+        if document is None:
             return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
+        missing_font_tables = _missing_font_tables(document[1])
+        repair_message = (
+            f"; Apply will add {', '.join(f'{table}.fonts' for table in missing_font_tables)}"
+            if missing_font_tables
+            else ""
+        )
         return AdapterResult(
             self.target,
             "ok",
             False,
-            True,
-            f"verified ChatGPT App config.toml: {self.config_path}",
+            not missing_font_tables,
+            f"verified ChatGPT App config.toml: {self.config_path}{repair_message}",
             version=CHATGPT_APP_CONFIG_SCHEMA_V1,
             metadata={"field_capabilities": field_capabilities(self.target)},
         )
@@ -192,8 +220,12 @@ class CodexAdapter:
         document = self._document()
         if document is None:
             return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
-        original, _ = document
-        updated = _replace_verified_values(original, {mode: plan.palette_for(mode) for mode in ("light", "dark")})
+        original, payload = document
+        updated = _replace_verified_values(
+            original,
+            {mode: plan.palette_for(mode) for mode in ("light", "dark")},
+            _missing_font_tables(payload),
+        )
         try:
             atomic_write_text(self.config_path, updated, newline="")
             return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1)

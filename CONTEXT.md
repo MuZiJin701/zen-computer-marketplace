@@ -121,6 +121,18 @@ Target 将已注册的主题明确设为当前活动主题；Light/Dark 变体�
 
 _Avoid_: 扩展已安装
 
+**Window opacity mode**
+
+ChatGPT App 决定窗口 chrome 使用实心绘制或透明合成的外观设置；透明合成的系统背板不属于当前 Palette 可控制字段。One-Tone 的 Canonical theme 必须在每个 Mode 写入并校验实心窗口模式，以保证窗口 chrome 使用主题 surface。
+
+_Avoid_: Theme surface、只影响侧边栏的颜色设置
+
+**Theme typography**
+
+ChatGPT App 浅色和深色主题各自的 UI 字体与代码字体设置；主题完整性判断必须要求每个 Mode 存在 `fonts` table，但不要求 Tool 生成 `ui` 或 `code` 值，也不能仅以颜色字段匹配断言主题有效。
+
+_Avoid_: 与主题无关的未知键、由颜色工具擅自选择的字体
+
 **Canonical theme artifact**
 
 面向用户的唯一推荐主题产物；同一 Mode 的压缩包、兼容别名和事务内部副本不属于可选主题。

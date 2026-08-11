@@ -50,10 +50,12 @@ FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
     "trae": (),
     "chatgpt-app": (
         "appearanceLightChromeTheme.surface", "appearanceLightChromeTheme.ink", "appearanceLightChromeTheme.accent",
-        "appearanceLightChromeTheme.contrast", "appearanceLightChromeTheme.semanticColors.diffAdded",
+        "appearanceLightChromeTheme.contrast", "appearanceLightChromeTheme.opaqueWindows", "appearanceLightChromeTheme.fonts",
+        "appearanceLightChromeTheme.semanticColors.diffAdded",
         "appearanceLightChromeTheme.semanticColors.diffRemoved", "appearanceLightChromeTheme.semanticColors.skill",
         "appearanceDarkChromeTheme.surface", "appearanceDarkChromeTheme.ink", "appearanceDarkChromeTheme.accent",
-        "appearanceDarkChromeTheme.contrast", "appearanceDarkChromeTheme.semanticColors.diffAdded",
+        "appearanceDarkChromeTheme.contrast", "appearanceDarkChromeTheme.opaqueWindows", "appearanceDarkChromeTheme.fonts",
+        "appearanceDarkChromeTheme.semanticColors.diffAdded",
         "appearanceDarkChromeTheme.semanticColors.diffRemoved", "appearanceDarkChromeTheme.semanticColors.skill",
     ),
     "chrome": (
@@ -205,7 +207,11 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
             {
                 "technical_field": name,
                 "label": _field_label(name),
-                "field_category": "display_property" if "display" in name or "Prevalence" in name else "color",
+                "field_category": (
+                    "theme_structure" if name.endswith(".fonts")
+                    else "display_property" if any(token in name.casefold() for token in ("display", "prevalence", "contrast", "opaquewindows"))
+                    else "color"
+                ),
                 "visual_role": _field_role(name),
                 "visual_region": _field_region(target, name),
                 "mode_support": "light,dark",
