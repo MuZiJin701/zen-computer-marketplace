@@ -223,7 +223,7 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
     entries = []
     for name in inventory_for(target):
         mapping = mappings.get(name)
-        text_class = _text_class(name)
+        text_class = mapping.text_class if mapping else _text_class(name)
         entries.append(
             {
                 "technical_field": name,
@@ -241,8 +241,8 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "inventory_version": _INVENTORY_VERSION,
                 "capability_status": "supported",
                 "text_class": text_class,
-                "paired_background_role": _paired_background_role(name, text_class),
-                "opacity_policy": _opacity_policy(text_class),
+                "paired_background_role": mapping.paired_background_role if mapping else _paired_background_role(name, text_class),
+                "opacity_policy": mapping.opacity_policy if mapping else _opacity_policy(text_class),
                 "reference_theme": _REFERENCE_THEMES.get(target, "verified runtime schema"),
                 "evidence_source": _EVIDENCE_SOURCES.get(target, "official schema"),
             }

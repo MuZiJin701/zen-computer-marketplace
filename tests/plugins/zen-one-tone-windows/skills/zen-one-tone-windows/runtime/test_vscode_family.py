@@ -80,7 +80,15 @@ def test_vscode_field_mapping_drives_theme_and_inventory():
     colors = build_theme_json(plan, "One Tone vscode", "light")["colors"]
     inventory = {entry["technical_field"]: entry for entry in field_inventory_for("vscode")}
 
-    assert set(colors) == {mapping.field for mapping in vscode_field_mappings()}
+    mappings = vscode_field_mappings()
+    assert len(mappings) == len({mapping.field for mapping in mappings})
+    assert set(colors) == {mapping.field for mapping in mappings}
+    assert all(
+        inventory[mapping.field]["visual_role"] == mapping.visual_role
+        and inventory[mapping.field]["text_class"] == mapping.text_class
+        and inventory[mapping.field]["paired_background_role"] == mapping.paired_background_role
+        for mapping in mappings
+    )
     assert inventory["editor.foreground"]["visual_role"] == "foreground"
     assert inventory["gitDecoration.addedResourceForeground"]["visual_role"] == "success_text"
 

@@ -53,7 +53,8 @@ def test_terminal_apply_registers_and_selects_a_valid_scheme(tmp_path):
     adapter = TerminalAdapter(settings_path)
     plan = create_plan("#00A86B", ["terminal"], plan_id="plan-terminal-scheme-001")
 
-    assert adapter.apply(plan).status == "ok"
+    applied = adapter.apply(plan)
+    assert applied.status == "ok"
     changed = json.loads(settings_path.read_text(encoding="utf-8"))
     scheme = next(item for item in changed["schemes"] if item["name"] == "One Tone")
     theme = next(item for item in changed["themes"] if item["name"] == "One Tone")
@@ -72,6 +73,8 @@ def test_terminal_apply_registers_and_selects_a_valid_scheme(tmp_path):
     assert theme["tabRow"]["background"] == palette["surface_subtle"]
     assert theme["window"]["frame"] == palette["accent"]
     assert theme["window"]["applicationTheme"] == "system"
+    assert applied.metadata["generated_values"]["window.frame"] == theme["window"]["frame"]
+    assert applied.metadata["generated_values"]["profile.tabColor"] == palette["accent"]
     assert adapter.verify(plan).verified is True
 
 

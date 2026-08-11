@@ -175,18 +175,39 @@ def _theme_colors(plan: Plan, mode: str | None = None) -> dict[str, Any]:
         "name": name,
         "window": {
             "applicationTheme": "system",
-            "frame": palette["accent"],
-            "unfocusedFrame": palette["muted_foreground"],
+            "frame": palette[terminal_palette_key("window.frame")],
+            "unfocusedFrame": palette[terminal_palette_key("window.unfocusedFrame")],
         },
         "tabRow": {
-            "background": palette["surface_subtle"],
-            "unfocusedBackground": palette["background"],
+            "background": palette[terminal_palette_key("tabRow.background")],
+            "unfocusedBackground": palette[terminal_palette_key("tabRow.unfocusedBackground")],
         },
         "tab": {
-            "background": palette["accent"],
-            "unfocusedBackground": palette["surface"],
+            "background": palette[terminal_palette_key("tab.background")],
+            "unfocusedBackground": palette[terminal_palette_key("tab.unfocusedBackground")],
         },
     }
+
+
+def _generated_values(plan: Plan) -> dict[str, Any]:
+    palette = plan.palette_for(plan.mode)
+    theme = _theme_colors(plan)
+    try:
+        profile = _prediction_profile_block(plan)
+    except ValueError:
+        profile = None
+    values = {
+        **_scheme_colors(plan),
+        "profile.colorScheme": dict(_SCHEME_MAPPING),
+        "profile.tabColor": palette[terminal_palette_key("profile.tabColor")],
+        "theme.applicationTheme": theme["window"]["applicationTheme"],
+        **{f"window.{key}": value for key, value in theme["window"].items() if key != "applicationTheme"},
+        **{f"tabRow.{key}": value for key, value in theme["tabRow"].items()},
+        **{f"tab.{key}": value for key, value in theme["tab"].items()},
+    }
+    if profile is not None:
+        values.update({field: profile for field in _PSREADLINE_FIELDS})
+    return values
 
 
 class TerminalAdapter:
@@ -295,13 +316,16 @@ class TerminalAdapter:
     def _shell_capabilities(self, status: str) -> dict[str, str]:
         return {field: status for field in _PSREADLINE_FIELDS}
 
-    def _metadata(self, status: str = "supported") -> dict[str, Any]:
+    def _metadata(self, status: str = "supported", plan: Plan | None = None) -> dict[str, Any]:
         capabilities = field_capabilities(self.target, statuses=self._shell_capabilities(status))
-        return {
+        metadata = {
             "field_capabilities": capabilities,
             "target_instance": self.target_instance(),
             "psreadline": dict(self._shell_info),
         }
+        if plan is not None:
+            metadata["generated_values"] = _generated_values(plan)
+        return metadata
 
     def _apply_profile(self, plan: Plan) -> tuple[str, str]:
         status = self._shell_info.get("status", "not-applicable")
@@ -405,7 +429,7 @@ class TerminalAdapter:
                 for key in profile_color_keys:
                     profile.pop(key, None)
                 profile["colorScheme"] = dict(_SCHEME_MAPPING)
-                profile["tabColor"] = plan.palette_for(plan.mode)["accent"]
+                profile["tabColor"] = plan.palette_for(plan.mode)[terminal_palette_key("profile.tabColor")]
             settings["profiles"].setdefault("defaults", {})["colorScheme"] = dict(_SCHEME_MAPPING)
             schemes = [item for item in settings.get("schemes", []) if item.get("name") != _SCHEME_NAME]
             schemes = [item for item in schemes if not str(item.get("name", "")).startswith(f"{_SCHEME_NAME} ")]
@@ -429,7 +453,7 @@ class TerminalAdapter:
             return AdapterResult(
                 self.target, overall_status, True, False,
                 f"Terminal Profile updated; {self._resolution_message}; {shell_message}",
-                overall_status == "partial", metadata=self._metadata(shell_capability),
+                overall_status == "partial", metadata=self._metadata(shell_capability, plan),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Terminal apply failed: {error}")
@@ -461,7 +485,7 @@ class TerminalAdapter:
                     isinstance(profile, dict)
                     and profile.get("colorScheme") == _SCHEME_MAPPING
                     and not any(key in profile for key in (*expected, "cursorColor"))
-                    and profile.get("tabColor") == plan.palette_for(plan.mode)["accent"]
+                    and profile.get("tabColor") == plan.palette_for(plan.mode)[terminal_palette_key("profile.tabColor")]
                     for profile in profile_list
                 )
                 and settings.get("profiles", {}).get("defaults", {}).get("colorScheme") == _SCHEME_MAPPING
@@ -481,7 +505,7 @@ class TerminalAdapter:
             return AdapterResult(
                 self.target, overall_status, False, overall_verified,
                 f"Terminal Profile verified; {message}; {shell_message}" if overall_verified else "Terminal Profile colors do not match Plan",
-                overall_status == "partial", metadata=self._metadata(shell_capability),
+                overall_status == "partial", metadata=self._metadata(shell_capability, plan),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Terminal verify failed: {error}")

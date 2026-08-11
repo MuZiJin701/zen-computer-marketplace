@@ -11,22 +11,40 @@ class FieldMapping:
     palette_key: str
     visual_region: str
     checked_on: str | None = None
+    text_class: str = "none"
+    paired_background_role: str = "not-applicable"
+    opacity_policy: str = "not-applicable"
 
 
-def _fields(names: str, role: str, *, key: str | None = None, region: str = "workbench", checked_on: str | None = None) -> tuple[FieldMapping, ...]:
-    return tuple(FieldMapping(name, role, key or role, region, checked_on) for name in names.split())
+def _fields(names: str, role: str, *, key: str | None = None, region: str = "workbench", checked_on: str | None = None, text_class: str | None = None) -> tuple[FieldMapping, ...]:
+    default_text_class, paired = {
+        "foreground": ("dense-primary", "surface"),
+        "muted_foreground": ("secondary", "surface"),
+        "selection": ("state", "selection"),
+        "accent_text": ("semantic", "surface"),
+        "error_text": ("semantic", "surface"),
+        "warning_text": ("semantic", "surface"),
+        "success_text": ("semantic", "surface"),
+        "accent_foreground": ("state", "accent"),
+        "prediction_foreground": ("secondary", "surface"),
+    }.get(role, ("none", "not-applicable"))
+    text_class = text_class or default_text_class
+    return tuple(FieldMapping(name, role, key or role, region, checked_on, text_class, paired, "opaque" if text_class != "none" else "not-applicable") for name in names.split())
 
 
 VSCODE_FIELD_MAPPINGS = (
     *_fields("foreground icon.foreground editor.foreground editorLineNumber.activeForeground sideBar.foreground sideBarTitle.foreground titleBar.activeForeground tab.activeForeground statusBar.foreground notifications.foreground settings.headerForeground breadcrumb.focusForeground terminal.foreground", "foreground", region="editor"),
-    *_fields("disabledForeground descriptionForeground editorLineNumber.foreground editor.placeholder.foreground activityBar.inactiveForeground activityBarTop.inactiveForeground panelTitle.inactiveForeground input.placeholderForeground titleBar.inactiveForeground tab.inactiveForeground", "muted_foreground", region="editor"),
+    *_fields("disabledForeground descriptionForeground editorLineNumber.foreground editor.placeholder.foreground activityBar.inactiveForeground activityBarTop.inactiveForeground panelTitle.inactiveForeground input.placeholderForeground", "muted_foreground", region="editor"),
     *_fields("editor.background terminal.background tab.activeBackground", "surface", region="editor"),
     *_fields("editor.selectionBackground editor.findMatchBackground list.activeSelectionBackground list.inactiveSelectionBackground list.focusBackground list.hoverBackground", "selection", key="selection_background", region="editor"),
     *_fields("editor.selectionForeground editor.findMatchForeground list.activeSelectionForeground list.inactiveSelectionForeground list.focusForeground", "selection", key="selection_foreground", region="editor"),
     *_fields("editorCursor.foreground editorMultiCursor.primary.foreground editorMultiCursor.secondary.foreground editorInfo.foreground list.highlightForeground list.focusHighlightForeground terminalCursor.foreground terminal.ansiBlue terminal.ansiMagenta terminal.ansiCyan terminal.ansiBrightBlue terminal.ansiBrightMagenta terminal.ansiBrightCyan textLink.foreground textLink.activeForeground", "accent_text", region="editor"),
-    *_fields("editorError.foreground terminal.ansiRed terminal.ansiBrightRed errorForeground", "error_text", region="editor"),
-    *_fields("editorWarning.foreground terminal.ansiYellow terminal.ansiBrightYellow", "warning_text", region="editor"),
-    *_fields("editorHint.foreground terminal.ansiGreen terminal.ansiBrightGreen", "success_text", region="editor"),
+    *_fields("editorError.foreground errorForeground", "error_text", region="editor", text_class="state"),
+    *_fields("editorWarning.foreground", "warning_text", region="editor", text_class="state"),
+    *_fields("editorHint.foreground", "success_text", region="editor", text_class="state"),
+    *_fields("terminal.ansiRed terminal.ansiBrightRed", "error_text", region="editor"),
+    *_fields("terminal.ansiYellow terminal.ansiBrightYellow", "warning_text", region="editor"),
+    *_fields("terminal.ansiGreen terminal.ansiBrightGreen", "success_text", region="editor"),
     *_fields("editorGroupHeader.tabsBorder sideBar.border sideBarTitle.border sideBarSectionHeader.border activityBar.border titleBar.border panel.border statusBar.border input.border editorWidget.border", "border", region="workbench"),
     *_fields("activityBar.activeBorder activityBarBadge.background activityBarTop.activeBorder tab.activeBorderTop panelTitle.activeBorder badge.background focusBorder button.background settings.modifiedItemIndicator", "accent", region="workbench"),
     *_fields("activityBarBadge.foreground badge.foreground button.foreground", "accent_foreground", region="workbench"),
