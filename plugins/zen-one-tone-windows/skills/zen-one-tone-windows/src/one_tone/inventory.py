@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .field_mappings import field_mappings_for
+
 FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
     "windows": (
         "wallpaper", "AccentPalette", "StartTaskbarColorPrevalence", "TitleBarColorPrevalence",
@@ -69,6 +71,8 @@ FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
 }
 
 FIELD_INVENTORY["trae"] = FIELD_INVENTORY["vscode"]
+for _target in ("terminal", "vscode", "trae"):
+    FIELD_INVENTORY[_target] = tuple(mapping.field for mapping in field_mappings_for(_target))
 
 
 _SOURCES = {
@@ -215,8 +219,10 @@ def _field_role(name: str) -> str:
 
 def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
     """Return the evidence-backed, user-readable Field inventory for a Target."""
+    mappings = {mapping.field: mapping for mapping in field_mappings_for(target)}
     entries = []
     for name in inventory_for(target):
+        mapping = mappings.get(name)
         text_class = _text_class(name)
         entries.append(
             {
@@ -227,8 +233,8 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                     else "display_property" if any(token in name.casefold() for token in ("display", "prevalence", "contrast", "opaquewindows"))
                     else "color"
                 ),
-                "visual_role": _field_role(name),
-                "visual_region": _field_region(target, name),
+                "visual_role": mapping.visual_role if mapping else _field_role(name),
+                "visual_region": mapping.visual_region if mapping else _field_region(target, name),
                 "mode_support": "light,dark",
                 "official_source": _SOURCES.get(target, "unknown"),
                 "version_baseline": _BASELINES.get(target, "verified runtime schema"),
@@ -262,9 +268,13 @@ def inventory_report(
     )
 
 
-def inventory_groups(target: str, statuses: dict[str, str] | None = None) -> dict[str, list[dict[str, Any]]]:
+def inventory_groups(
+    target: str,
+    statuses: dict[str, str] | None = None,
+    generated_values: dict[str, Any] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {}
-    for entry in inventory_report(target, statuses):
+    for entry in inventory_report(target, statuses, generated_values):
         groups.setdefault(entry["visual_region"], []).append(entry)
     return groups
 

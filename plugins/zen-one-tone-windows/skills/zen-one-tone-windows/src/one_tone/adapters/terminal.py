@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping
 
 from ..palette import contrast_ratio, parse_hex_color
 from ..plan import Plan
+from ..field_mappings import terminal_palette_key, terminal_scheme_colors
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
 
@@ -69,8 +70,10 @@ def _checked_text_color(palette: Mapping[str, str], role: str, background: str) 
 def _prediction_profile_block(plan: Plan) -> str:
     light = plan.palette_for("light")
     dark = plan.palette_for("dark")
-    light_prediction = _checked_text_color(light, "prediction_foreground", light["surface"])
-    dark_prediction = _checked_text_color(dark, "prediction_foreground", dark["surface"])
+    prediction_role = terminal_palette_key("InlinePrediction")
+    selected_foreground_role = terminal_palette_key("ListPredictionSelected")
+    light_prediction = _checked_text_color(light, prediction_role, light["surface"])
+    dark_prediction = _checked_text_color(dark, prediction_role, dark["surface"])
     lines = [
         _PROFILE_START,
         "if ($env:WT_SESSION) {",
@@ -80,7 +83,7 @@ def _prediction_profile_block(plan: Plan) -> str:
         "  } catch { }",
         f"  $oneToneInlinePrediction = if ($oneToneLightMode) {{ {_ansi_expression(light_prediction)} }} else {{ {_ansi_expression(dark_prediction)} }}",
         f"  $oneToneListPrediction = if ($oneToneLightMode) {{ {_ansi_expression(light_prediction)} }} else {{ {_ansi_expression(dark_prediction)} }}",
-        f"  $oneToneListPredictionSelected = if ($oneToneLightMode) {{ {_ansi_expression(light['selection_foreground'])} + {_ansi_expression(light['selection_background'], True)} }} else {{ {_ansi_expression(dark['selection_foreground'])} + {_ansi_expression(dark['selection_background'], True)} }}",
+        f"  $oneToneListPredictionSelected = if ($oneToneLightMode) {{ {_ansi_expression(light[selected_foreground_role])} + {_ansi_expression(light['selection_background'], True)} }} else {{ {_ansi_expression(dark[selected_foreground_role])} + {_ansi_expression(dark['selection_background'], True)} }}",
         "  Set-PSReadLineOption -Colors @{",
         "    InlinePrediction = $oneToneInlinePrediction",
         "    ListPrediction = $oneToneListPrediction",
@@ -155,29 +158,7 @@ def resolve_default_profile(settings: dict[str, Any]) -> tuple[int, str] | None:
 
 
 def _palette_colors(plan: Plan, mode: str | None = None) -> dict[str, str]:
-    palette = plan.palette_for(mode or plan.mode)
-    return {
-        "background": palette["surface"],
-        "foreground": palette["foreground"],
-        "selectionBackground": palette["selection_background"],
-        "selectionForeground": palette["selection_foreground"],
-        "black": palette["foreground"],
-        "red": palette["error_text"],
-        "green": palette["success_text"],
-        "yellow": palette["warning_text"],
-        "blue": palette["accent_text"],
-        "purple": palette["accent_text"],
-        "cyan": palette["accent_text"],
-        "white": palette["foreground"],
-        "brightBlack": palette["foreground"],
-        "brightRed": palette["error_text"],
-        "brightGreen": palette["success_text"],
-        "brightYellow": palette["warning_text"],
-        "brightBlue": palette["accent_text"],
-        "brightPurple": palette["accent_text"],
-        "brightCyan": palette["accent_text"],
-        "brightWhite": palette["foreground"],
-    }
+    return terminal_scheme_colors(plan.palette_for(mode or plan.mode))
 
 
 def _scheme_colors(plan: Plan, mode: str | None = None) -> dict[str, str]:

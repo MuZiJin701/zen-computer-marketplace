@@ -4,28 +4,16 @@ import json
 import shutil
 import subprocess
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from ..plan import Plan
+from ..editor_instance import EditorSpec
+from ..field_mappings import vscode_theme_colors
 from ..inventory import inventory_groups, inventory_report
 from ..palette import contrast_ratio
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
-
-
-@dataclass(frozen=True)
-class EditorSpec:
-    target: str
-    executable: str | Path
-    settings_path: Path
-    extensions_dir: Path
-    ai_panel_supported: bool = False
-    artifacts_dir: Path | None = None
-    resolution_status: str = "ok"
-    resolution_message: str = ""
-    resolution_source: str = ""
 
 
 def _checked_text_color(palette: Mapping[str, str], role: str, background: str) -> str:
@@ -40,7 +28,7 @@ def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None) -> di
     light_mode_surface = palette["surface"] if mode == "light" else palette["background"]
     sidebar_surface = palette["surface"] if mode == "light" else palette["surface_subtle"]
     light_mode_foreground = palette["foreground"] if mode == "light" else background_foreground
-    return {
+    theme = {
         "name": theme_name,
         "type": mode,
         "colors": {
@@ -203,6 +191,11 @@ def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None) -> di
             {"scope": ["constant.numeric", "constant.language"], "settings": {"foreground": palette["warning_text"]}},
         ],
     }
+    colors = vscode_theme_colors(palette, mode, lambda role, background: _checked_text_color(palette, role, background))
+    if theme["colors"] != colors:
+        raise ValueError("VS Code field mapping does not match the generated theme")
+    theme["colors"] = colors
+    return theme
 
 
 def build_vsix(plan: Plan, output_path: Path, spec: EditorSpec) -> Path:
@@ -238,20 +231,7 @@ class VSCodeFamilyAdapter:
         self._theme_name = f"One Tone {spec.target}"
 
     def target_instance(self) -> dict[str, Any]:
-        instance: dict[str, Any] = {
-            "status": self.spec.resolution_status,
-        }
-        if self.spec.resolution_status == "ok":
-            instance.update({
-                "executable": str(self.spec.executable),
-                "settings_path": str(self.spec.settings_path),
-                "extensions_dir": str(self.spec.extensions_dir),
-            })
-            if self.spec.resolution_source:
-                instance["source"] = self.spec.resolution_source
-        elif self.spec.resolution_message:
-            instance["reason"] = self.spec.resolution_message
-        return instance
+        return self.spec.target_instance()
 
     def _executable_available(self) -> bool:
         if isinstance(self.spec.executable, Path):

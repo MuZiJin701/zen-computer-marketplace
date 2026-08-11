@@ -72,6 +72,19 @@ def test_editor_theme_uses_surface_for_primary_backgrounds():
     assert colors["panel.background"] == palette["background"]
 
 
+def test_vscode_field_mapping_drives_theme_and_inventory():
+    from one_tone.field_mappings import vscode_field_mappings
+    from one_tone.inventory import field_inventory_for
+
+    plan = create_plan("#10B981", ["vscode"], plan_id="plan-editor-field-mapping-001", mode="light")
+    colors = build_theme_json(plan, "One Tone vscode", "light")["colors"]
+    inventory = {entry["technical_field"]: entry for entry in field_inventory_for("vscode")}
+
+    assert set(colors) == {mapping.field for mapping in vscode_field_mappings()}
+    assert inventory["editor.foreground"]["visual_role"] == "foreground"
+    assert inventory["gitDecoration.addedResourceForeground"]["visual_role"] == "success_text"
+
+
 def test_editor_theme_maps_git_decorations_without_recoloring_sidebar_text():
     plan = create_plan("#10B981", ["trae"], plan_id="plan-editor-git-decoration-001", mode="light")
     colors = build_theme_json(plan, "One Tone trae")["colors"]

@@ -227,6 +227,21 @@ def test_editor_adapter_uses_plan_instance_paths_over_current_discovery(tmp_path
     assert adapter.spec.extensions_dir == planned_extensions
 
 
+def test_editor_adapter_skips_incomplete_plan_instance_without_environment_fallback(tmp_path, monkeypatch):
+    current_settings = tmp_path / "current-settings.json"
+    current_extensions = tmp_path / "current-extensions"
+    current_settings.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ONE_TONE_VSCODE_SETTINGS", str(current_settings))
+    monkeypatch.setenv("ONE_TONE_VSCODE_EXTENSIONS", str(current_extensions))
+
+    adapter = build_target_adapters(("vscode",), tmp_path / "state", {
+        "vscode": {"status": "ok", "settings_path": str(current_settings)},
+    })["vscode"]
+
+    assert adapter.detect().status == "skipped"
+    assert "incomplete" in adapter.target_instance()["reason"]
+
+
 def test_cli_defaults_runtime_data_to_single_project_directory():
     from one_tone.cli import _build_parser
 

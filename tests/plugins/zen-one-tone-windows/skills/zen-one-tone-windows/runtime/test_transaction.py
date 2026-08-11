@@ -8,7 +8,7 @@ import pytest
 from one_tone.adapters import AdapterResult, UnsupportedAdapter
 from one_tone.adapters.windows import InMemoryDesktopBackend, InMemoryRegistryBackend, WindowsAdapter, WindowsConfig
 from one_tone.plan import create_plan
-from one_tone.transaction import TransactionRecord, TransactionStatus, TransactionStore, apply_plan
+from one_tone.transaction import TransactionRecord, TransactionStatus, TransactionStore, apply_plan, verify_plan
 import one_tone.transaction as transaction_module
 
 
@@ -151,6 +151,33 @@ def test_verify_plan_reads_current_state_without_transaction(tmp_path):
 
     assert result["file-demo"].status == "ok"
     assert not list((tmp_path / "transactions").glob("**/transaction.json"))
+
+
+def test_apply_and_verify_enrich_field_evidence_at_the_transaction_seam(tmp_path):
+    class EvidenceAdapter(FileAdapter):
+        def apply(self, plan):
+            super().apply(plan)
+            return AdapterResult(
+                self.target, "ok", True, False, "palette written",
+                metadata={"field_capabilities": {"foreground": "applied"}, "generated_values": {"foreground": "#123456"}},
+            )
+
+        def verify(self, plan):
+            return AdapterResult(
+                self.target, "ok", False, True, "configuration verified",
+                metadata={"field_capabilities": {"foreground": "verified"}, "generated_values": {"foreground": "#123456"}},
+            )
+
+    config = tmp_path / "settings.json"
+    config.write_text("{}", encoding="utf-8")
+    plan = create_plan("#7C3AED", ["terminal"], plan_id="plan-evidence-contract-001")
+    record = apply_plan(plan, {"terminal": EvidenceAdapter("terminal", config)}, TransactionStore(tmp_path / "transactions"), confirm=True)
+    applied = next(result for result in record.results["terminal"] if result["operation"] == "apply")
+    verified = verify_plan(plan, {"terminal": EvidenceAdapter("terminal", config)})["terminal"]
+
+    applied_foreground = next(entry for entry in applied["metadata"]["field_inventory"] if entry["technical_field"] == "foreground")
+    verified_foreground = next(entry for entry in verified.metadata["field_inventory"] if entry["technical_field"] == "foreground")
+    assert applied_foreground["generated_value"] == verified_foreground["generated_value"] == "#123456"
 
 
 def test_transaction_store_prunes_old_completed_transactions(tmp_path):

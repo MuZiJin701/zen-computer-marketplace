@@ -179,6 +179,25 @@ def _append_result(record: TransactionRecord, target: str, operation: str, resul
     record.results.setdefault(target, []).append(payload)
 
 
+def _with_field_evidence(result: AdapterResult) -> AdapterResult:
+    metadata = dict(result.metadata)
+    statuses = metadata.get("field_capabilities", {})
+    generated_values = metadata.get("generated_values", {})
+    if not isinstance(statuses, dict):
+        statuses = {}
+    if not isinstance(generated_values, dict):
+        generated_values = {}
+    if not generated_values:
+        generated_values = {
+            entry["technical_field"]: entry["generated_value"]
+            for entry in metadata.get("field_inventory", ())
+            if isinstance(entry, dict) and entry.get("generated_value") is not None and isinstance(entry.get("technical_field"), str)
+        }
+    metadata["field_inventory"] = inventory_report(result.target, statuses, generated_values)
+    metadata["field_groups"] = inventory_groups(result.target, statuses, generated_values)
+    return replace(result, metadata=metadata)
+
+
 def apply_plan(
     plan: Plan,
     adapters: Mapping[str, ThemeAdapter],
@@ -218,7 +237,7 @@ def apply_plan(
             unsuccessful_targets = True
             continue
 
-        applied = adapter.apply(plan)
+        applied = _with_field_evidence(adapter.apply(plan))
         store.append_operation(record, target, "apply", applied)
         if applied.status == "partial" or applied.requires_user_action:
             partial = True
@@ -231,7 +250,7 @@ def apply_plan(
                 compensation_failed = True
             continue
 
-        verified = adapter.verify(plan)
+        verified = _with_field_evidence(adapter.verify(plan))
         store.append_operation(record, target, "verify", verified)
         if verified.status == "partial" or verified.requires_user_action:
             partial = True
@@ -260,11 +279,5 @@ def verify_plan(plan: Plan, adapters: Mapping[str, ThemeAdapter]) -> dict[str, A
     results = {}
     for target in plan.targets:
         result = adapters.get(target, UnsupportedAdapter(target)).verify(plan)
-        metadata = dict(result.metadata)
-        statuses = metadata.get("field_capabilities", {})
-        if not isinstance(statuses, dict):
-            statuses = {}
-        metadata.setdefault("field_inventory", inventory_report(target, statuses))
-        metadata.setdefault("field_groups", inventory_groups(target, statuses))
-        results[target] = replace(result, metadata=metadata)
+        results[target] = _with_field_evidence(result)
     return results

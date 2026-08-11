@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping
 
 from .palette import REQUIRED_KEYS, generate_palette, parse_hex_color, validate_mode_coherence, validate_palette
 from .inventory import expected_capabilities
+from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 
@@ -192,8 +193,10 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
         status = instance.get("status")
         if status not in {"ok", "skipped"}:
             raise PlanIntegrityError(f"Plan target instance status is invalid for {plan_id}")
+        if target in {"vscode", "trae"} and not validate_editor_instance(target, instance):
+            raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
         required_instance_keys = ("settings_path",) if target == "terminal" else ("executable", "settings_path", "extensions_dir")
-        if status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
+        if target not in {"vscode", "trae"} and status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
         if target == "terminal" and any(
             key in instance and not isinstance(instance.get(key), str)
