@@ -85,6 +85,12 @@ Windows Shell 是否把 Accent color 显示到开始菜单和任务栏的独立�
 
 _Avoid_: Accent color 本身
 
+**Windows Shell active tile**
+
+Windows 快速设置中显示固定白色系统图标的活动卡片；它和 Start、任务栏、标题栏使用同一对比度安全的 Shell Accent，并以白色图标至少 `4.5:1` 的对比度验收。
+
+_Avoid_: 只校验 AccentPalette 注册表回读
+
 ### Target language
 
 **Marketplace**  

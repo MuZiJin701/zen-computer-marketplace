@@ -14,6 +14,7 @@ from one_tone.adapters.windows import (
     windows_colorization_value,
 )
 import one_tone.adapters.windows as windows_module
+from one_tone.palette import contrast_ratio
 from one_tone.plan import create_plan
 
 
@@ -151,8 +152,10 @@ def test_windows_apply_sets_green_accent_and_taskbar_prevalence(tmp_path):
     assert registry.values["SystemUsesLightTheme"] == 1
     assert registry.values["StartTaskbarColorPrevalence"] == 1
     assert registry.values["TitleBarColorPrevalence"] == 1
-    assert registry.values["AccentColorMenu"] == windows_color_value(plan.palette_for(plan.mode)["accent"])
-    assert registry.values["ColorizationColor"] == windows_colorization_value(plan.palette_for(plan.mode)["accent"])
+    first_slot = registry.values["AccentPalette"][:4]
+    shell_accent = "#" + "".join(f"{channel:02X}" for channel in (first_slot[2], first_slot[1], first_slot[0]))
+    assert registry.values["AccentColorMenu"] == windows_color_value(shell_accent)
+    assert registry.values["ColorizationColor"] == windows_colorization_value(shell_accent)
     assert adapter.verify(plan).verified is True
 
 
@@ -181,6 +184,27 @@ def test_windows_accent_palette_is_an_eight_color_bgra_binary_value():
 
     assert len(palette) == 32
     assert palette[:4] == bytes((0x36, 0x54, 0x00, 0x00))
+
+
+def test_windows_apply_keeps_white_shell_glyphs_legible(tmp_path):
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200"})
+    adapter = WindowsAdapter(WindowsConfig(tmp_path), registry, InMemoryDesktopBackend())
+    plan = create_plan("#39FF14", ["windows"], plan_id="plan-windows-shell-contrast-001")
+
+    assert adapter.apply(plan).status == "ok"
+
+    palette = registry.values["AccentPalette"]
+    colors = [
+        "#" + "".join(f"{channel:02X}" for channel in (slot[2], slot[1], slot[0]))
+        for slot in (palette[index:index + 4] for index in range(0, len(palette), 4))
+    ]
+
+    assert all(contrast_ratio(color, "#FFFFFF") >= 4.5 for color in colors)
+    shell_accent = colors[0]
+    assert registry.values["AccentColorMenu"] == windows_color_value(shell_accent)
+    assert registry.values["StartColorMenu"] == windows_color_value(shell_accent)
+    assert registry.values["AccentColor"] == windows_color_value(shell_accent)
+    assert registry.values["ColorizationColor"] == windows_colorization_value(shell_accent)
 
 
 def test_windows_registry_writes_each_value_to_its_declared_hive_path(monkeypatch):

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from ..inventory import inventory_groups, inventory_report
-from ..palette import parse_hex_color
+from ..palette import contrast_ratio, parse_hex_color
 from ..plan import Plan
 from ..storage import BYTES_MARKER, atomic_write_text, json_safe
 from .base import AdapterResult
@@ -267,31 +267,43 @@ def _blend_color(first: str, second: str, second_weight: float) -> str:
     )
 
 
+def _shell_accent(accent: str) -> str:
+    # ponytail: AccentPalette slot semantics are not publicly stable; keep the
+    # complete Shell ramp safe for its fixed white glyphs.
+    for darkening in range(101):
+        candidate = _blend_color(accent, "#000000", darkening / 100)
+        if contrast_ratio(_blend_color(candidate, "#FFFFFF", 0.2), "#FFFFFF") >= 4.5:
+            return candidate
+    raise AssertionError("black must satisfy white foreground contrast")
+
+
 def generate_accent_palette(accent: str) -> bytes:
+    shell_accent = _shell_accent(accent)
     colors = [
-        accent,
-        _blend_color(accent, "#FFFFFF", 0.2),
-        _blend_color(accent, "#FFFFFF", 0.4),
-        _blend_color(accent, "#FFFFFF", 0.6),
-        _blend_color(accent, "#FFFFFF", 0.8),
-        _blend_color(accent, "#000000", 0.2),
-        _blend_color(accent, "#000000", 0.4),
-        _blend_color(accent, "#000000", 0.6),
+        shell_accent,
+        _blend_color(shell_accent, "#FFFFFF", 0.05),
+        _blend_color(shell_accent, "#FFFFFF", 0.10),
+        _blend_color(shell_accent, "#FFFFFF", 0.15),
+        _blend_color(shell_accent, "#FFFFFF", 0.20),
+        _blend_color(shell_accent, "#000000", 0.2),
+        _blend_color(shell_accent, "#000000", 0.4),
+        _blend_color(shell_accent, "#000000", 0.6),
     ]
     return b"".join(bytes((*reversed(parse_hex_color(color)), 0)) for color in colors)
 
 
 def _theme_registry_values(plan: Plan) -> dict[str, int | bytes]:
     palette = plan.palette_for(plan.mode)
-    accent = windows_color_value(palette["accent"])
+    shell_accent = _shell_accent(palette["accent"])
+    accent = windows_color_value(shell_accent)
     values = {
         "TitleBarColorPrevalence": 1,
         "AccentColorMenu": accent,
         "StartColorMenu": accent,
         "AccentPalette": generate_accent_palette(palette["accent"]),
         "AccentColor": accent,
-        "ColorizationColor": windows_colorization_value(palette["accent"]),
-        "ColorizationAfterglow": windows_colorization_value(palette["accent"]),
+        "ColorizationColor": windows_colorization_value(shell_accent),
+        "ColorizationAfterglow": windows_colorization_value(shell_accent),
     }
     values["StartTaskbarColorPrevalence"] = 1
     return values
