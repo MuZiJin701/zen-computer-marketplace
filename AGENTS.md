@@ -49,7 +49,7 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 - Plan ID、Transaction ID 和 target 必须是安全路径组件；未知 target 可安全 skipped，但不得创建越界路径。
 - Plan、事务和目标配置 JSON 使用同目录临时文件加原子替换，避免中断造成截断文件。
 - 事务快照默认保留最近 5 个已完成事务；只清理工具生成的数据。
-- Seed Color 原样作为 Palette/Codex 的 surface 和 Windows 壁纸颜色；Windows 强调色使用 Palette accent，默认不得修改用户浅/深色模式或 AutoColorization。
+- Seed Color 原样作为 Palette/Codex 的 surface 和 Windows 壁纸颜色；Windows Shell 强调色从 Palette `accent` 派生，并必须保持固定白色 Shell 图标至少 `4.5:1` 对比度；默认不得修改用户浅/深色模式或 AutoColorization。
 - Cursor 暂不属于用户可见支持目标；显式输入 cursor 必须安全 skipped，不得访问或修改 Cursor 文件。
 
 ## 当前实现边界
