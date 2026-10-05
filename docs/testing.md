@@ -57,3 +57,17 @@ A passing fixture test is not proof that a real desktop Target renders every pub
 The focused regression gate additionally covers TRAE Git decorations, Windows Terminal PSReadLine prediction colors, Windows Light/Dark taskbar Accent mode cycling, and a real Quick Settings screenshot with legible active-tile white glyphs. Taskbar registry state is not treated as visual proof when the OS ignores the requested Light-mode display.
 
 The runtime Plan stores both `light` and `dark` Palettes under one canonical `palettes` field. The legacy persisted `palette` field is rejected rather than guessed or migrated. `Plan.palette_for(mode)` returns a copy; single-mode Adapters use the Plan's selected mode, while paired artifact Adapters explicitly cover both modes. Existing v1 callers that invoke `generate_palette(seed)` retain the original single-palette shape; new Plan and artifact paths use explicit modes.
+
+## Terminal functional text acceptance
+
+The [terminal spec](specs/2026-10-05-terminal-readability.md) requires body text at 7:1 in both Modes and other functional text at 4.5:1 against its actual rendered background. Regression tests at Plan → Adapter → configuration/Transaction cover Seeds `#00C853`, `#10B981`, `#FFD700`, primary/white text on ANSI black, reverse pairs, semantic distinction and selection pairs. They also cover supported/old/unknown host versions, defaults/Profile/unfocused overrides, read-only drift detection, exact restoration including absent fields, and compensation on Profile write failure. PowerShell discovery chooses only `pwsh`, verifies Core >= 7, and never falls back to Windows PowerShell.
+
+Run the packaged `scripts/terminal_readability_sample.py` in Windows Terminal and the App embedded terminal. It emits synthetic default/ANSI16/ANSI256/RGB/application-background/dim/reverse combinations without reading or writing configuration. Manually select ordinary, ANSI, RGB and dim samples. For an already-authorized real SSH connection, send the same script over stdin using PowerShell 7; do not copy configuration or install remote tools:
+
+~~~powershell
+Get-Content -Raw .\scripts\terminal_readability_sample.py | ssh <existing-host> python3 -
+~~~
+
+For each host × local/real SSH × Light/Dark × all three Seeds, also exercise the actual Codex CLI and the identified editor/version, including body, syntax, path, version, status bar, placeholder, input and selected text. Record host/program versions, actual displayed foreground/background, contrast and visual pass/fail/untested. Host correction does not guarantee those thresholds, and dim/selection compositing requires final rendered colors. Configuration `verified`, diagnostic transport and captured output never substitute for this matrix.
+
+Real theme changes still follow Preview → confirmed Plan Apply → read-only Verify → explicit Transaction Rollback. Do not switch the Windows theme mode automatically. The App embedded terminal's full ANSI/native correction is unsupported because its verified user schema exposes no entry point. An unidentified local program, broken/missing remote Codex CLI or unavailable visual check remains untested; no complete acceptance claim is allowed. Current measurements and remaining gates are in [the evidence record](terminal-readability-evidence.md). No type checker is configured; Python compilation is checked alongside fixture tests without installing a new dependency.

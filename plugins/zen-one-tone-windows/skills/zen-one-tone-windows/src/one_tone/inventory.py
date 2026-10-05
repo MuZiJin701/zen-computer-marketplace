@@ -91,7 +91,7 @@ _BASELINES = {
     "chatgpt-app": "verified ChatGPT App v1 color schema",
     "chrome": "Chrome Manifest V3 theme schema",
 }
-_INVENTORY_VERSION = "2026-08-03.v2"
+_INVENTORY_VERSION = "2026-10-05.v3"
 
 _REFERENCE_THEMES = {
     "windows": "Windows user-visible color settings",
@@ -230,14 +230,14 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "label": _field_label(name),
                 "field_category": (
                     "theme_structure" if name.endswith(".fonts")
-                    else "display_property" if any(token in name.casefold() for token in ("display", "prevalence", "contrast", "opaquewindows"))
+                    else "display_property" if any(token in name.casefold() for token in ("display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
                     else "color"
                 ),
                 "visual_role": mapping.visual_role if mapping else _field_role(name),
                 "visual_region": mapping.visual_region if mapping else _field_region(target, name),
                 "mode_support": "light,dark",
-                "official_source": _SOURCES.get(target, "unknown"),
-                "version_baseline": _BASELINES.get(target, "verified runtime schema"),
+                "official_source": "https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance#adjust-indistinguishable-colors" if name == "profile.adjustIndistinguishableColors" else _SOURCES.get(target, "unknown"),
+                "version_baseline": "Windows Terminal >= 1.16; executable version discovered during Preview" if name == "profile.adjustIndistinguishableColors" else _BASELINES.get(target, "verified runtime schema"),
                 "inventory_version": _INVENTORY_VERSION,
                 "capability_status": "supported",
                 "text_class": text_class,

@@ -63,7 +63,11 @@ VSCODE_FIELD_MAPPINGS = (
 
 TERMINAL_FIELD_MAPPINGS = (
     *_fields("background", "surface", region="terminal"),
-    *_fields("foreground black white brightBlack brightWhite", "foreground", region="terminal"),
+    *_fields("foreground", "foreground", region="terminal"),
+    # ANSI slots are used as backgrounds too; black pairs with primary/white text.
+    *_fields("black", "surface", region="terminal"),
+    *_fields("white brightWhite", "foreground", region="terminal", text_class="semantic"),
+    *_fields("brightBlack", "muted_foreground", region="terminal", text_class="semantic"),
     *_fields("selectionBackground", "selection", key="selection_background", region="terminal"),
     *_fields("selectionForeground", "selection", key="selection_foreground", region="terminal"),
     *_fields("cursorColor", "accent_text", region="terminal"),
@@ -73,6 +77,7 @@ TERMINAL_FIELD_MAPPINGS = (
     *_fields("blue purple cyan brightBlue brightPurple brightCyan", "accent_text", region="terminal"),
     *_fields("profile.tabColor window.frame tab.background", "accent", region="terminal"),
     *_fields("profile.colorScheme theme.applicationTheme", "surface", region="terminal"),
+    *_fields("profile.adjustIndistinguishableColors", "foreground", region="terminal", text_class="none"),
     *_fields("InlinePrediction ListPrediction", "prediction_foreground", region="terminal"),
     *_fields("ListPredictionSelected", "selection", key="selection_foreground", region="terminal"),
     *_fields("window.unfocusedFrame", "muted_foreground", region="terminal"),

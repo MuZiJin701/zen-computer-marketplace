@@ -15,3 +15,5 @@ tests/
 当前 runtime 测试按 Plugin 和 Skill 分开：One-Tone 位于 `tests/plugins/zen-one-tone-windows/skills/zen-one-tone-windows/runtime/`，Desktop zero 和 Scoop toolchain 的行为测试分别位于对应 Plugin 的 Skill 测试目录，与可分发 Skill 的目录边界对应。
 
 默认测试使用临时目录和 fake backend，不触碰真实桌面、不提权、不终止进程，也不安装真实软件。真实桌面删除、进程处理、Scoop 和 winget 测试必须单独标记并说明风险。
+
+终端回归从 Plan 经 Adapter 检查生成 Scheme、原生修正的版本能力、defaults/Profile/未聚焦覆盖、只读 Verify、PSReadLine 写入失败补偿和明确事务回滚；诊断脚本检查代表性 ANSI 输出及无文件写入。fixture、配置回读与真实 SSH 输出捕获均不替代最终渲染验收，步骤和未验项见 [测试说明](../docs/testing.md) 与 [证据记录](../docs/terminal-readability-evidence.md)。

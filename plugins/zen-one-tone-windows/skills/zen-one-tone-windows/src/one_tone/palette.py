@@ -418,7 +418,7 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
         surface_raised = _oklch_color(hue, 0.75, tonal_chroma)
     background_foreground = _readable_foreground((background,), 7)
     foreground = _readable_foreground(
-        (surface,), 7 if mode == "light" else 4.5, minimum_lightness=2 if mode == "light" else 4
+        (surface,), 7, minimum_lightness=2 if mode == "light" else 4
     )
     muted_foreground = _readable_foreground((surface,), 4.5, hue=0.52)
     accent = _contrast_safe_accent(seed, surface, preserve_identity=True, allow_low_chroma=True)
@@ -554,7 +554,7 @@ def validate_palette(palette: Mapping[str, str], *, mode: str | None = None) -> 
             invalid_keys.add("prediction_foreground")
             errors.append(f"prediction_foreground: {error}")
     for foreground, background, minimum_ratio in _CONTRAST_PAIRS:
-        if mode == "light" and foreground == "foreground":
+        if mode in {"light", "dark"} and foreground == "foreground":
             minimum_ratio = 7
         if foreground in palette and background in palette and not ({foreground, background} & invalid_keys):
             ratio = contrast_ratio(palette[foreground], palette[background])

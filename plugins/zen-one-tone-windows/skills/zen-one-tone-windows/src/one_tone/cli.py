@@ -229,6 +229,7 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
                 terminal_settings,
                 target_instance=terminal_instance or None,
                 discover_shell=target_instances is None,
+                terminal_executable=terminal_executable if target_instances is None else None,
             )
         elif target == "vscode":
             registry[target] = VSCodeFamilyAdapter(vscode_spec)

@@ -23,6 +23,18 @@ Seed Color 是 Theme anchor 和 Accent source；ChatGPT App 的浅色和深色�
 
 Chrome 目标生成 Manifest V3 的 Light/Dark 两个 canonical unpacked 主题目录；ZIP 只作为内部打包产物，不是额外的用户选项。Chrome 不允许普通本地 Skill 对任意扩展或主题执行安全的静默安装；因此必须由用户在 `chrome://extensions` 确认加载。企业策略或 Chrome Web Store 发布的扩展属于另一种部署方式，不在本 Skill 的权限范围内。
 
+## 终端功能文字
+
+终端正文在 Light/Dark 的受管背景上都要求 `7:1`；ANSI 语义文字、路径、状态、占位提示和选中态要求实际背景 `4.5:1`。ANSI black 使用 surface，white/brightWhite 使用正文色，brightBlack 使用次要文字色，避免前景/背景槽位全部坍缩；一张色表不保证任意程序指定色组合。
+
+Preview 读取 Windows Terminal 可执行文件版本；`>= 1.16` 时将 `adjustIndistinguishableColors = always` 能力与实际可执行文件纳入 Plan Hash。Apply 覆盖 defaults、所有 Profile 和已有 `unfocusedAppearance`，Snapshot/Verify/Rollback 覆盖新增字段；未知或旧版本保留字段并报告 `partial`。原生修正不自动证明最终对比度达标。
+
+Shell/PSReadLine 默认只发现 PowerShell 7 的 `pwsh`，不选择或回退 Windows PowerShell `powershell.exe`。显式 `ONE_TONE_POWERSHELL_EXECUTABLE` 也必须经探测确认为 Core、版本 `>= 7`。没有 PowerShell 7 时跳过预测颜色子能力，保留 Windows Terminal Scheme；缺少 PSReadLine 公共字段时报告 `unsupported`。Profile 路径来自该宿主的 `$PROFILE.CurrentUserAllHosts`，纳入 Plan；Apply/Verify 使用同一实例，受管区块仅在 Windows Terminal 会话生效。执行本 Skill 的 PowerShell 命令也使用 `pwsh`。
+
+ChatGPT App 内嵌终端使用独立 xterm/CSS 色表；已验证的桌面主题字段没有完整 ANSI 表或原生前景修正入口。该子能力报告 `unsupported`，保留 App 配置中的未知键。两个宿主的报告均区分配置 `verified` 与 `rendering_verification = untested`；dim、reverse、256 色、RGB、应用自带背景和真实 SSH 需独立复核。
+
+在两个宿主本地运行 `python .\scripts\terminal_readability_sample.py`，再把同一脚本经标准输入送入已有 SSH 会话。它不读写配置；手动选中示例文字检查选择状态，并使用实际 Codex CLI 和已确认名称/版本的编辑器复核。记录 Seed、Mode、宿主/程序版本、实际前景/背景、对比度和视觉通过/失败/未验。仅在复现并找到已验证配置入口后扩展本地程序主题；远端配置保持不变。详细字段与能力边界见 [目标矩阵](references/targets.md)。
+
 ## 命令
 
 ```powershell

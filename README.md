@@ -1,5 +1,7 @@
 # Zen Computer Marketplace
 
+[English](README.en.md)
+
 面向极简、有序电脑使用场景的跨 Agent Skill 市场。
 
 当前提供三个独立 Plugin：`zen-one-tone-windows` 统一 Windows 主题，`zen-desktop-zero` 整理当前用户桌面，`zen-scoop-toolchain` 检查并补齐基础开发工具链。
@@ -96,6 +98,9 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 - Seed Color 作为 ChatGPT App 和 Windows 的 Theme anchor/Accent source；大面积 ChatGPT App Surface 和 Windows 壁纸使用 appearance-safe 的 Tonal surface，避免纯色铺满。ChatGPT App 主题保持用户当前 `appearanceTheme`，并使用高对比度配置。
 - Windows Terminal 会为所有已发现 Profile 写入成对 Light/Dark Scheme、ANSI 颜色和 Tab 颜色，Profile 随 Windows 系统模式切换，窗口主题使用 `system`，不强制 Windows 深色模式；可选地发现并回滚 Windows Terminal 会话中的 PSReadLine 预测颜色。
+- PowerShell 命令与 Shell/PSReadLine 发现使用 PowerShell 7 `pwsh`，不自动选择 Windows PowerShell；显式宿主覆盖也必须验证为 Core `>= 7`。这不改变 Windows Terminal 的默认 Profile。
+- Terminal 正文在 Light/Dark 都按受管背景 `7:1` 验收，其他功能文字为 `4.5:1`。ANSI black 用作受管背景，white/brightWhite 为正文色，brightBlack 为次要文字色；任意 ANSI 组合仍需实际渲染复核。Preview 读取 Windows Terminal 可执行文件版本，`>= 1.16` 时为 defaults、所有 Profile 和已有未聚焦配置启用 `adjustIndistinguishableColors = always`，并支持 Verify 和事务回滚；未知/旧版本保留该字段并报告 `partial`。
+- ChatGPT App 内嵌终端使用独立的 xterm/CSS 色表；当前没有可验证的用户配置入口控制完整 ANSI 表或原生前景修正。桌面主题 Verify 不代表内嵌终端、dim、reverse、256 色、RGB 或真实 SSH 视觉验收通过，报告中的 `rendering_verification` 保持 `untested`。
 - VS Code 和 TRAE 主题覆盖标准 Workbench、Git decoration、编辑器选择/光标、终端 ANSI、链接、通知和语义高亮字段，并启用应用自带的系统模式自动跟随；各自的 AI 专属面板仍由应用自行决定。
 - Windows 开启“自动从背景中选取强调色”时，系统可能覆盖固定强调色；想保持稳定颜色，请在 Windows 设置中关闭该选项。
 - Chrome 会生成 Manifest V3 本地主题的 Light/Dark 两个 canonical unpacked 目录；ZIP 是内部打包产物，需到 `chrome://extensions` 手动加载；普通本地 Skill 不能静默安装 Chrome 扩展。
@@ -125,6 +130,8 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 已确认的主题字段覆盖、浅深模式、相邻区域可区分性、版本能力和验收范围见 [主题字段覆盖与相邻区域可区分性开发说明](docs/specs/2026-07-25-theme-field-coverage-and-separation.md)。当前结构审计见 [架构说明](docs/architecture.md)。
 
 TRAE Git decoration、Windows Terminal PSReadLine 预测颜色和 Windows 任务栏模式恢复见 [主题回归与可移植 Shell 集成开发说明](docs/specs/2026-08-03-theme-regressions-and-portable-shell-integration.md)。
+
+终端功能文字实现范围见 [终端可读性 spec](docs/specs/2026-10-05-terminal-readability.md)，配置、宿主能力及真实界面未验项见 [验收证据](docs/terminal-readability-evidence.md)。可在两个宿主分别运行 Skill 内 `python .\scripts\terminal_readability_sample.py`；真实 SSH 诊断可通过标准输入执行同一脚本，不写入远端文件。运行样例只证明输出覆盖，最终显示仍需人工复核。
 
 工作站 Plugin 的已执行开发说明见 [Zen 工作站规范插件开发说明](docs/specs/2026-07-26-zen-workstation-plugins.md)。
 

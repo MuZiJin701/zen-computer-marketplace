@@ -93,13 +93,18 @@ def create_plan(
     coherence_errors = validate_mode_coherence(normalized_seed, palettes)
     if coherence_errors:
         raise ValueError("Generated palettes failed Mode coherence validation: " + "; ".join(coherence_errors))
+    capabilities = expected_capabilities(normalized_targets)
+    if "terminal" in capabilities:
+        instance = (target_instances or {}).get("terminal", {})
+        native = instance.get("native_correction", {})
+        capabilities["terminal"]["profile.adjustIndistinguishableColors"] = native.get("status", "unsupported")
     payload = {
         "id": safe_plan_id,
         "seed_color": normalized_seed,
         "mode": mode,
         "targets": list(normalized_targets),
         "palettes": palettes,
-        "field_capabilities": expected_capabilities(normalized_targets),
+        "field_capabilities": capabilities,
         "target_instances": {
             target: dict(instance)
             for target, instance in (target_instances or {}).items()
@@ -203,6 +208,12 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
             for key in ("powershell_executable", "profile_path")
         ):
             raise PlanIntegrityError(f"Plan terminal instance paths are invalid for {plan_id}")
+        if target == "terminal" and "native_correction" in instance:
+            native = instance["native_correction"]
+            if not isinstance(native, dict) or native.get("status") not in {"supported", "unsupported"}:
+                raise PlanIntegrityError(f"Plan terminal capability is invalid for {plan_id}")
+            if native["status"] == "supported" and any(not isinstance(native.get(key), str) or not native[key] for key in ("executable", "version")):
+                raise PlanIntegrityError(f"Plan terminal capability evidence is missing for {plan_id}")
     return Plan(
         id=payload["id"],
         seed_color=payload["seed_color"],

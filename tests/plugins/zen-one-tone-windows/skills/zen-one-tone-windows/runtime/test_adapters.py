@@ -41,7 +41,7 @@ def test_field_inventory_keeps_evidence_and_visual_region_details():
     assert field["technical_field"]
     assert field["official_source"].startswith("https://")
     assert field["version_baseline"]
-    assert field["inventory_version"] == "2026-08-03.v2"
+    assert field["inventory_version"] == "2026-10-05.v3"
     assert field["capability_status"] == "supported"
 
 

@@ -4,6 +4,19 @@ def test_package_exposes_version():
     assert one_tone.__version__ == "0.1.0"
 
 
+def test_terminal_diagnostic_emits_representative_output_without_files(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path("plugins/zen-one-tone-windows/skills/zen-one-tone-windows/scripts/terminal_readability_sample.py").resolve()
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True)
+    for sequence in ("\x1b[39;40m", "\x1b[37;40m", "\x1b[38;5;", "\x1b[38;2;", "\x1b[2m", "\x1b[7m"):
+        assert sequence in result.stdout
+    assert "selection" in result.stdout
+    assert not list(tmp_path.iterdir())
+
+
 def test_readme_documents_full_adapter_boundaries():
     from pathlib import Path
 

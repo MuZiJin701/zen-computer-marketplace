@@ -84,6 +84,17 @@ def _skip_result(message: str) -> AdapterResult:
     return AdapterResult("chatgpt-app", "skipped", False, False, message)
 
 
+def _theme_metadata() -> dict[str, Any]:
+    return {
+        "field_capabilities": field_capabilities("chatgpt-app"),
+        "rendering_verification": "untested",
+        "embedded_terminal": {
+            "status": "unsupported",
+            "reason": "The embedded terminal uses an independent xterm/CSS theme; no verified user setting exposes its ANSI table or minimumContrastRatio",
+        },
+    }
+
+
 def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, Any]]:
     updates: dict[str, dict[str, Any]] = {}
     for table_name, mode in zip(_THEME_TABLES, ("light", "dark")):
@@ -201,9 +212,9 @@ class CodexAdapter:
             "ok",
             False,
             not missing_font_tables,
-            f"verified ChatGPT App config.toml: {self.config_path}{repair_message}",
+            f"verified ChatGPT App config.toml: {self.config_path}{repair_message}; embedded terminal unsupported; rendering untested",
             version=CHATGPT_APP_CONFIG_SCHEMA_V1,
-            metadata={"field_capabilities": field_capabilities(self.target)},
+            metadata=_theme_metadata(),
         )
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
@@ -228,7 +239,7 @@ class CodexAdapter:
         )
         try:
             atomic_write_text(self.config_path, updated, newline="")
-            return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
+            return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1, metadata=_theme_metadata())
         except OSError as error:
             return AdapterResult(self.target, "failed", False, False, f"ChatGPT App apply failed: {error}", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
 
@@ -242,9 +253,9 @@ class CodexAdapter:
             "ok" if verified else "failed",
             False,
             verified,
-            "ChatGPT App config.toml theme verified" if verified else "ChatGPT App config.toml theme does not match Plan",
+            "ChatGPT App config.toml theme verified; embedded terminal unsupported; rendering untested" if verified else "ChatGPT App config.toml theme does not match Plan; rendering untested",
             version=CHATGPT_APP_CONFIG_SCHEMA_V1,
-            metadata={"field_capabilities": field_capabilities(self.target)},
+            metadata=_theme_metadata(),
         )
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:

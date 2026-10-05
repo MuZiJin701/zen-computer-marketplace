@@ -4,15 +4,15 @@
 
 ### Issue tracker
 
-任务和需求记录在 GitHub Issues，使用 gh CLI 操作。详见 docs/agents/issue-tracker.md。
+任务和需求使用 GitHub Issues；发布、读取或更新 ticket 前先读 docs/agents/issue-tracker.md。
 
 ### Triage labels
 
-使用默认的五个 triage 标签：needs-triage、needs-info、ready-for-agent、ready-for-human、wontfix。详见 docs/agents/triage-labels.md。
+Triage 使用默认的五个状态标签；分类、状态映射和更新规则见 docs/agents/triage-labels.md。
 
 ### Domain docs
 
-这是 single-context 项目；开始探索前先读根目录 CONTEXT.md，再读相关 ADR。详见 docs/agents/domain.md。
+这是 single-context 项目；探索前读根目录 CONTEXT.md 和相关 ADR，术语、决策与需求文档的读写规则见 docs/agents/domain.md。
 
 ## 项目目标
 
@@ -55,6 +55,7 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 ## 当前实现边界
 
 - Windows Terminal 已覆盖所有发现的 Profile：统一 Scheme、ANSI、光标和 Tab 字段；窗口主题使用 applicationTheme = system，不强制深色模式。
+- Windows Terminal 正文在两种 Mode 的受管背景均要求 `7:1`；原生 `adjustIndistinguishableColors = always` 按 Preview 发现的版本能力应用。Shell/PSReadLine 默认只选 PowerShell 7 `pwsh`，不回退 Windows PowerShell；配置 Verify 与真实渲染验收分别报告。
 - VS Code/TRAE 已覆盖标准 Workbench 的选择、光标、终端 ANSI、链接、通知、诊断和语义高亮字段；TRAE 专属 AI 面板仍需真实应用验证。
 - Chrome 使用 Manifest V3 本地主题，覆盖框架、工具栏、标签、书签页、NTP、链接和地址栏文字；激活仍由用户手动确认。
 - 文字对比度目标为深层背景 7:1，surface/强调背景文字 4.5:1；视觉 accent 不直接作为文字色。

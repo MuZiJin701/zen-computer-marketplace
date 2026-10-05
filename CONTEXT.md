@@ -54,6 +54,27 @@ _Avoid_: 主题颜色抄录表、截图集合
 Light Mode 中需要连续阅读或快速辨认的普通文字，例如编辑器/终端正文、命令行输出、表格内容、导航标签和常规控件标签；它不包括选中态、禁用态或装饰性文字。
 _Avoid_: 所有前景色、强调文字
 
+**Terminal functional text**
+
+终端中承载阅读、操作或状态信息的文字，包括正文、语法/ANSI 彩色文字、路径、状态栏、输入占位提示和选中态文字；纯装饰图案不属于此范围。
+
+_Avoid_: 仅默认前景色、把装饰图案当作功能文字、把所有功能文字都称为 Dense primary text
+
+**Native foreground correction**
+终端宿主按实际背景修正难以区分的前景色的原生能力；能力可用不代表所有输出已达到功能文字的对比度要求。
+
+_Avoid_: 修改程序输出、完整渲染通过证明
+
+**Configuration match**
+当前 Target 配置与 Plan 的受管字段一致，是 Verify 的检查结果。
+
+_Avoid_: 真实界面通过、所有终端文字可读
+
+**Rendering acceptance**
+在明确宿主、程序、Mode、Seed 和本地或真实 SSH 会话中，对最终显示的功能文字进行数值检查与视觉复核。
+
+_Avoid_: 用配置匹配或录制输出代替真实渲染
+
 **Git decoration**
 文件或资源管理器旁显示的版本控制状态标记，例如 added、modified、untracked、ignored 或 conflicting；它是语义状态文字，不等同于普通文件名或 Dense primary text。
 
@@ -306,6 +327,7 @@ _Avoid_: 自动换盘、备用安装盘
 - Target Adapter 把 Color field 映射到 Visual role。
 - Git decoration 是 Target 的语义状态 Color field，使用语义文字 role 和实际相邻背景。
 - Inline prediction 属于 `terminal` Target 的可选 Shell/PSReadLine 子能力，Profile 位置和能力在 Preview 中发现，并受同一 Transaction 安全流程约束。
+- Native foreground correction 属于终端宿主能力；Configuration match 与 Rendering acceptance 分别记录，SSH 的远端输出由本地宿主渲染。
 - Field inventory 定义应覆盖的 Color field。
 - Plan 保存一次 Preview 的 Target 和 Mode 预期。
 - Preview 为需要配置实例发现的 Target 解析唯一 Active Target instance；Apply 与 Verify 不重新猜测路径。

@@ -26,6 +26,19 @@ def test_codex_v1_config_is_detected(tmp_path):
     assert result.version == CHATGPT_APP_CONFIG_SCHEMA_V1
 
 
+def test_chatgpt_app_config_match_does_not_claim_embedded_terminal_rendering(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    adapter = CodexAdapter(path)
+    plan = create_plan("#00C853", ["chatgpt-app"])
+    assert adapter.apply(plan).status == "ok"
+    before = path.read_bytes()
+    result = adapter.verify(plan)
+    assert result.verified
+    assert result.metadata["embedded_terminal"]["status"] == "unsupported"
+    assert result.metadata["rendering_verification"] == "untested"
+    assert path.read_bytes() == before
+
+
 def test_codex_system_appearance_mode_is_detected(tmp_path):
     path = write_codex_v1_fixture(tmp_path / "config.toml")
     path.write_text(

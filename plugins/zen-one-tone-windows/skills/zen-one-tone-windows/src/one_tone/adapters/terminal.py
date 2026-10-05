@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,11 +20,15 @@ _SCHEME_MAPPING = {"light": f"{_SCHEME_NAME} Light", "dark": f"{_SCHEME_NAME} Da
 _PSREADLINE_FIELDS = ("InlinePrediction", "ListPrediction", "ListPredictionSelected")
 _PROFILE_START = "# >>> one-tone windows-terminal prediction colors >>>"
 _PROFILE_END = "# <<< one-tone windows-terminal prediction colors <<<"
+_NATIVE_FIELD = "profile.adjustIndistinguishableColors"
 
 
 def _powershell_probe() -> str:
     return """
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
+  throw 'One-Tone requires PowerShell 7 or newer; Windows PowerShell is not selected'
+}
 Import-Module PSReadLine -ErrorAction SilentlyContinue
 $module = Get-Module PSReadLine
 $fields = @()
@@ -34,6 +39,8 @@ if ($null -ne $options) {
 [ordered]@{
   profile = [string]$PROFILE.CurrentUserAllHosts
   version = if ($null -ne $module) { [string]$module.Version } else { '' }
+  host_version = [string]$PSVersionTable.PSVersion
+  edition = [string]$PSVersionTable.PSEdition
   fields = $fields
 } | ConvertTo-Json -Compress
 """
@@ -43,12 +50,8 @@ def _powershell_candidates() -> list[Path]:
     configured = os.environ.get("ONE_TONE_POWERSHELL_EXECUTABLE")
     if configured:
         return [Path(configured)]
-    candidates: list[Path] = []
-    for command in ("pwsh", "powershell"):
-        resolved = shutil.which(command)
-        if resolved and Path(resolved) not in candidates:
-            candidates.append(Path(resolved))
-    return candidates
+    resolved = shutil.which("pwsh")
+    return [Path(resolved)] if resolved else []
 
 
 def _ansi_expression(color: str, background: bool = False) -> str:
@@ -157,6 +160,12 @@ def resolve_default_profile(settings: dict[str, Any]) -> tuple[int, str] | None:
     return None
 
 
+def _profile_appearances(settings: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    profiles = settings["profiles"]
+    parents = (profiles.get("defaults", {}), *profiles.get("list", []))
+    return (*parents, *(profile["unfocusedAppearance"] for profile in parents if isinstance(profile.get("unfocusedAppearance"), dict)))
+
+
 def _palette_colors(plan: Plan, mode: str | None = None) -> dict[str, str]:
     return terminal_scheme_colors(plan.palette_for(mode or plan.mode))
 
@@ -220,11 +229,14 @@ class TerminalAdapter:
         powershell_executable: Path | None = None,
         command_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
         discover_shell: bool = False,
+        terminal_executable: Path | None = None,
     ) -> None:
         self.settings_path = settings_path
         self._profile_index: int | None = None
         self._resolution_message = ""
         self._target_instance = dict(target_instance or {})
+        self._terminal_executable = terminal_executable
+        self._native_info = dict(self._target_instance.get("native_correction", {}))
         self._powershell_executable = powershell_executable
         self._command_runner = command_runner or subprocess.run
         self._discover_shell_enabled = discover_shell or command_runner is not None or bool(target_instance)
@@ -232,6 +244,38 @@ class TerminalAdapter:
         self._shell_info: dict[str, Any] = {}
         self._shell_discovered = bool(self._target_instance)
         self._load_shell_instance()
+
+    def _discover_native_correction(self) -> None:
+        if self._native_info:
+            return
+        self._native_info = {"status": "unsupported", "reason": "Windows Terminal version could not be verified"}
+        if self._target_instance or self._terminal_executable is None:
+            return
+        try:
+            executable = self._terminal_executable
+            shim = executable.with_suffix(".shim")
+            if shim.is_file():
+                match = re.search(r'^path = "([^"]+)"$', shim.read_text(encoding="utf-8"), re.MULTILINE)
+                if not match:
+                    return
+                executable = Path(match[1])
+            # Read the executable version resource without launching a Terminal window.
+            escaped = str(executable).replace("'", "''")
+            completed = self._command_runner(
+                [shutil.which("pwsh") or "pwsh", "-NoProfile", "-NonInteractive", "-Command",
+                 f"(Get-Item -LiteralPath '{escaped}').VersionInfo.FileVersion"],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            version = (completed.stdout or "").strip()
+            match = re.fullmatch(r"(\d+)\.(\d+)\.\d+(?:\.\d+)?", version)
+            supported = completed.returncode == 0 and match is not None and tuple(map(int, match.groups())) >= (1, 16)
+            self._native_info = {
+                "status": "supported" if supported else "unsupported",
+                "executable": str(executable), "version": version,
+                "reason": "" if supported else "adjustIndistinguishableColors=always requires Windows Terminal >= 1.16",
+            }
+        except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+            self._native_info["reason"] = f"Windows Terminal capability discovery failed: {error}"
 
     def _load_shell_instance(self) -> None:
         instance = self._target_instance
@@ -252,10 +296,9 @@ class TerminalAdapter:
             return
         candidates = [self._powershell_executable] if self._powershell_executable is not None else _powershell_candidates()
         if not candidates:
-            self._shell_info = {"status": "not-applicable", "reason": "PowerShell host not found"}
+            self._shell_info = {"status": "not-applicable", "reason": "PowerShell 7 (pwsh) not found; Windows PowerShell is not selected"}
             return
         fallback: dict[str, Any] = {"status": "unsupported", "reason": "PowerShell hosts do not expose PSReadLine prediction fields"}
-        supported_candidates: list[tuple[Path, Path, dict[str, Any]]] = []
         for executable in candidates:
             self._powershell_executable = executable
             try:
@@ -264,47 +307,45 @@ class TerminalAdapter:
                     capture_output=True,
                     text=True,
                     check=False,
+                    timeout=10,
                 )
+                if completed.returncode != 0:
+                    raise ValueError("PowerShell 7 capability probe failed")
                 payload = json.loads((completed.stdout or "").strip().splitlines()[-1])
+                if not isinstance(payload, dict):
+                    raise ValueError("PowerShell capability probe must return a JSON object")
+                host_version = str(payload.get("host_version", ""))
+                host_major = host_version.split(".", 1)[0]
+                if payload.get("edition") != "Core" or not host_major.isdigit() or int(host_major) < 7:
+                    raise ValueError("PowerShell 7 host could not be verified; Windows PowerShell is not selected")
                 fields = payload.get("fields", [])
                 if isinstance(fields, str):
                     fields = [fields]
+                if not isinstance(fields, list):
+                    raise ValueError("PSReadLine fields must be a list")
                 fields = sorted({str(field) for field in fields})
                 profile_path = Path(str(payload.get("profile", ""))) if payload.get("profile") else None
                 fallback = {
                     "status": "supported" if profile_path is not None and set(_PSREADLINE_FIELDS) <= set(fields) else "unsupported",
                     "version": str(payload.get("version", "")),
+                    "host_version": host_version,
+                    "edition": "Core",
                     "fields": fields,
                     "reason": "required PSReadLine prediction fields are unavailable" if set(_PSREADLINE_FIELDS) - set(fields) else "",
                 }
                 if fallback["status"] == "supported":
-                    supported_candidates.append((executable, profile_path, fallback))
-            except (OSError, ValueError, IndexError, json.JSONDecodeError) as error:
+                    self._profile_path = profile_path
+                    self._shell_info = fallback
+                    return
+            except (OSError, ValueError, IndexError, TypeError, subprocess.TimeoutExpired) as error:
                 fallback = {"status": "unsupported", "reason": f"PowerShell capability discovery failed: {error}"}
-        profile_paths = {profile for _, profile, _ in supported_candidates}
-        if len(profile_paths) > 1:
-            self._powershell_executable = None
-            self._profile_path = None
-            self._shell_info = {
-                "status": "unsupported",
-                "reason": "PowerShell Profile candidates are ambiguous",
-                "candidates": [
-                    {"executable": str(executable), "profile_path": str(profile)}
-                    for executable, profile, _ in supported_candidates
-                ],
-            }
-            return
-        if supported_candidates:
-            executable, profile_path, info = supported_candidates[0]
-            self._powershell_executable = executable
-            self._profile_path = profile_path
-            self._shell_info = info
-            return
         self._shell_info = fallback
 
     def target_instance(self) -> dict[str, Any]:
         self._discover_shell()
+        self._discover_native_correction()
         instance: dict[str, Any] = {"status": "ok", "settings_path": str(self.settings_path)}
+        instance["native_correction"] = dict(self._native_info)
         if self._powershell_executable is not None:
             instance["powershell_executable"] = str(self._powershell_executable)
         if self._profile_path is not None:
@@ -316,15 +357,27 @@ class TerminalAdapter:
     def _shell_capabilities(self, status: str) -> dict[str, str]:
         return {field: status for field in _PSREADLINE_FIELDS}
 
-    def _metadata(self, status: str = "supported", plan: Plan | None = None) -> dict[str, Any]:
-        capabilities = field_capabilities(self.target, statuses=self._shell_capabilities(status))
+    def _metadata(self, status: str = "supported", plan: Plan | None = None, native_status: str | None = None) -> dict[str, Any]:
+        self._discover_native_correction()
+        capabilities = field_capabilities(self.target, statuses={
+            **self._shell_capabilities(status),
+            _NATIVE_FIELD: native_status or self._native_info["status"],
+        })
         metadata = {
             "field_capabilities": capabilities,
             "target_instance": self.target_instance(),
             "psreadline": dict(self._shell_info),
+            "native_correction": dict(self._native_info),
+            "rendering_verification": "untested",
+            "rendering_limitations": [
+                "Configuration matches do not prove final rendering contrast; dim, reverse, selection, ANSI256 and RGB need visual acceptance",
+                "A single ANSI table cannot guarantee every application-owned foreground/background pair",
+            ],
         }
         if plan is not None:
             metadata["generated_values"] = _generated_values(plan)
+            if self._native_info["status"] == "supported":
+                metadata["generated_values"][_NATIVE_FIELD] = "always"
         return metadata
 
     def _apply_profile(self, plan: Plan) -> tuple[str, str]:
@@ -372,6 +425,12 @@ class TerminalAdapter:
         payload = json.loads(self.settings_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("Terminal settings must be a JSON object")
+        profiles = payload.get("profiles", {})
+        if not isinstance(profiles, dict) or not isinstance(profiles.get("defaults", {}), dict):
+            raise ValueError("Terminal profiles/defaults must be JSON objects")
+        entries = profiles.get("list", [])
+        if not isinstance(entries, list) or any(not isinstance(profile, dict) for profile in entries):
+            raise ValueError("Terminal Profile list must contain JSON objects")
         return payload
 
     def detect(self) -> AdapterResult:
@@ -379,17 +438,18 @@ class TerminalAdapter:
             return AdapterResult(self.target, "skipped", False, False, f"Terminal settings not found: {self.settings_path}")
         try:
             self._discover_shell()
+            self._discover_native_correction()
             settings = self._read()
             resolved = resolve_default_profile(settings)
             if resolved is None:
                 return AdapterResult(self.target, "skipped", False, False, "Terminal default Profile could not be resolved")
             self._profile_index, self._resolution_message = resolved
             shell_status = self._shell_info.get("status", "not-applicable")
-            status = "partial" if shell_status == "unsupported" else "ok"
+            status = "partial" if shell_status == "unsupported" or self._native_info["status"] != "supported" else "ok"
             shell_message = self._shell_info.get("reason") or "PSReadLine prediction capability discovered"
             return AdapterResult(
                 self.target, status, False, True,
-                f"Terminal Profile detected; {self._resolution_message}; {shell_message}",
+                f"Terminal Profile detected; {self._resolution_message}; {shell_message}; native correction {self._native_info['status']}; rendering untested",
                 status == "partial", metadata=self._metadata(shell_status),
             )
         except (OSError, ValueError, json.JSONDecodeError) as error:
@@ -421,15 +481,18 @@ class TerminalAdapter:
             if resolved is None:
                 return AdapterResult(self.target, "failed", False, False, "Terminal default Profile could not be resolved")
             self._profile_index, self._resolution_message = resolved
-            profile_list = settings["profiles"]["list"]
+            self._discover_native_correction()
             profile_color_keys = (*_palette_colors(plan), "cursorColor")
-            for profile in profile_list:
+            settings["profiles"].setdefault("defaults", {})
+            for profile in _profile_appearances(settings):
                 if not isinstance(profile, dict):
                     continue
                 for key in profile_color_keys:
                     profile.pop(key, None)
                 profile["colorScheme"] = dict(_SCHEME_MAPPING)
                 profile["tabColor"] = plan.palette_for(plan.mode)[terminal_palette_key("profile.tabColor")]
+                if self._native_info["status"] == "supported":
+                    profile["adjustIndistinguishableColors"] = "always"
             settings["profiles"].setdefault("defaults", {})["colorScheme"] = dict(_SCHEME_MAPPING)
             schemes = [item for item in settings.get("schemes", []) if item.get("name") != _SCHEME_NAME]
             schemes = [item for item in schemes if not str(item.get("name", "")).startswith(f"{_SCHEME_NAME} ")]
@@ -448,12 +511,14 @@ class TerminalAdapter:
             )
             self._discover_shell()
             shell_status, shell_message = self._apply_profile(plan)
-            overall_status = "partial" if shell_status in {"unsupported", "failed"} else "ok"
+            overall_status = "partial" if shell_status in {"unsupported", "failed"} or self._native_info["status"] != "supported" else "ok"
+            if shell_status == "failed":
+                overall_status = "failed"
             shell_capability = "applied" if shell_status == "applied" else shell_status
             return AdapterResult(
                 self.target, overall_status, True, False,
-                f"Terminal Profile updated; {self._resolution_message}; {shell_message}",
-                overall_status == "partial", metadata=self._metadata(shell_capability, plan),
+                f"Terminal Profile updated; {self._resolution_message}; {shell_message}; native correction {self._native_info['status']}; rendering untested",
+                overall_status == "partial", metadata=self._metadata(shell_capability, plan, "applied" if self._native_info["status"] == "supported" else None),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Terminal apply failed: {error}")
@@ -466,7 +531,11 @@ class TerminalAdapter:
                 return AdapterResult(self.target, "failed", False, False, "Terminal default Profile could not be resolved")
             index, message = resolved
             expected = _palette_colors(plan)
-            profile_list = settings["profiles"]["list"]
+            self._discover_native_correction()
+            native_supported = self._native_info["status"] == "supported"
+            native_verified = not native_supported or all(
+                profile.get("adjustIndistinguishableColors") == "always" for profile in _profile_appearances(settings)
+            )
             scheme = next((item for item in settings.get("schemes", []) if item.get("name") == _SCHEME_NAME), None)
             scheme_expected = _scheme_colors(plan)
             theme = next((item for item in settings.get("themes", []) if item.get("name") == _THEME_NAME), None)
@@ -486,8 +555,9 @@ class TerminalAdapter:
                     and profile.get("colorScheme") == _SCHEME_MAPPING
                     and not any(key in profile for key in (*expected, "cursorColor"))
                     and profile.get("tabColor") == plan.palette_for(plan.mode)[terminal_palette_key("profile.tabColor")]
-                    for profile in profile_list
+                    for profile in _profile_appearances(settings)
                 )
+                and native_verified
                 and settings.get("profiles", {}).get("defaults", {}).get("colorScheme") == _SCHEME_MAPPING
                 and isinstance(scheme, dict)
                 and all(scheme.get(key) == value for key, value in scheme_expected.items())
@@ -499,13 +569,13 @@ class TerminalAdapter:
             shell_status, shell_verified, shell_message = self._verify_profile(plan)
             shell_capability = "verified" if shell_status == "verified" and shell_verified else shell_status
             overall_verified = verified and (shell_status in {"not-applicable", "unsupported", "failed"} or shell_verified)
-            overall_status = "partial" if shell_status in {"unsupported", "failed"} else "ok"
+            overall_status = "partial" if shell_status in {"unsupported", "failed"} or not native_supported else "ok"
             if not overall_verified and shell_status not in {"unsupported", "failed"}:
                 overall_status = "failed"
             return AdapterResult(
                 self.target, overall_status, False, overall_verified,
-                f"Terminal Profile verified; {message}; {shell_message}" if overall_verified else "Terminal Profile colors do not match Plan",
-                overall_status == "partial", metadata=self._metadata(shell_capability, plan),
+                f"Terminal configuration verified; {message}; {shell_message}; native correction {self._native_info['status']}; rendering untested" if overall_verified else "Terminal Profile colors do not match Plan; rendering untested",
+                overall_status == "partial", metadata=self._metadata(shell_capability, plan, ("verified" if native_verified else "failed") if native_supported else None),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Terminal verify failed: {error}")
@@ -515,19 +585,19 @@ class TerminalAdapter:
         if not backup.is_file():
             return AdapterResult(self.target, "failed", False, False, "Terminal backup not found")
         try:
-            shutil.copy2(backup, self.settings_path)
+            with backup.open("r", encoding="utf-8", newline="") as handle:
+                atomic_write_text(self.settings_path, handle.read(), newline="")
             profile_state_path = backup_dir / "powershell-profile-state.json"
             if profile_state_path.is_file() and self._profile_path is not None:
                 profile_state = json.loads(profile_state_path.read_text(encoding="utf-8"))
                 profile_backup = backup_dir / "powershell-profile.ps1"
                 if profile_state.get("exists") and profile_backup.is_file():
-                    original_profile = profile_backup.read_text(encoding="utf-8", newline="")
+                    with profile_backup.open("r", encoding="utf-8", newline="") as handle:
+                        original_profile = handle.read()
                     current_profile = self._read_profile() if self._profile_path.is_file() else ""
-                    atomic_write_text(
-                        self._profile_path,
-                        _restore_managed_profile_block(current_profile, original_profile),
-                        newline="",
-                    )
+                    restored_profile = _restore_managed_profile_block(current_profile, original_profile)
+                    if restored_profile != current_profile:
+                        atomic_write_text(self._profile_path, restored_profile, newline="")
                 elif not profile_state.get("exists") and self._profile_path.exists():
                     restored_profile = _restore_managed_profile_block(self._read_profile(), "")
                     if restored_profile.strip():
@@ -538,7 +608,8 @@ class TerminalAdapter:
             if profile_state_path.is_file() and self._profile_path is not None:
                 profile_state = json.loads(profile_state_path.read_text(encoding="utf-8"))
                 if profile_state.get("exists"):
-                    original_profile = profile_backup.read_text(encoding="utf-8", newline="") if profile_backup.is_file() else ""
+                    with profile_backup.open("r", encoding="utf-8", newline="") as handle:
+                        original_profile = handle.read()
                     restored = restored and self._profile_path.is_file() and _managed_profile_matches(self._read_profile(), original_profile)
                 elif self._profile_path.is_file():
                     restored = restored and _PROFILE_START not in self._read_profile() and _PROFILE_END not in self._read_profile()
