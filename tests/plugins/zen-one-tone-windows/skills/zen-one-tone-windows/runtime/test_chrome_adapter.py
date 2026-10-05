@@ -1,10 +1,41 @@
 import json
 import zipfile
+import pytest
 
 from one_tone.adapters.chrome import ChromeAdapter, build_chrome_theme, build_chrome_theme_directory
 from one_tone.palette import parse_hex_color
 from one_tone.plan import create_plan
 from one_tone.transaction import TransactionStore, apply_plan
+
+
+@pytest.mark.parametrize("mode,artifact", [("light", "directory"), ("dark", "zip")])
+def test_chrome_verifies_complete_public_manifest_and_required_artifacts(tmp_path, mode, artifact):
+    # Chromium 77270bd: kOverwritableColorTable and kTintTable, independent of generation.
+    colors = set("background_tab background_tab_inactive background_tab_incognito background_tab_incognito_inactive bookmark_text button_background frame frame_inactive frame_incognito frame_incognito_inactive ntp_background ntp_header ntp_link ntp_text omnibox_background omnibox_text tab_background_text tab_background_text_inactive tab_background_text_incognito tab_background_text_incognito_inactive tab_text toolbar toolbar_button_icon toolbar_text".split())
+    tints = set("background_tab buttons frame frame_inactive frame_incognito frame_incognito_inactive".split())
+    plan = create_plan("#22C55E", ["chrome"])
+    adapter = ChromeAdapter(tmp_path)
+    adapter.apply(plan)
+    directory = tmp_path / f"one-tone-{plan.id}-{mode}"
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    assert set(manifest["theme"]["colors"]) == colors
+    assert set(manifest["theme"]["tints"]) == tints
+    assert manifest["theme"]["properties"] == {"ntp_logo_alternate": int(mode == "dark")}
+    assert adapter.verify(plan).verified
+    manifest["theme"]["colors"]["omnibox_text"] = [1, 2, 3]
+    if artifact == "directory":
+        path = directory / "manifest.json"
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+    else:
+        path = tmp_path / f"one-tone-{plan.id}-{mode}.zip"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("manifest.json", json.dumps(manifest))
+    before = path.read_bytes()
+    assert not adapter.verify(plan).verified
+    assert path.read_bytes() == before
+    adapter.apply(plan)
+    path.unlink()
+    assert not adapter.verify(plan).verified
 
 
 def test_chrome_theme_zip_has_manifest_and_palette_colors(tmp_path):

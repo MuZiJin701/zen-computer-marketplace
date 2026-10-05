@@ -7,6 +7,38 @@ from one_tone.plan import create_plan, save_plan
 from one_tone.transaction import TransactionRecord, TransactionStatus
 
 
+def test_editor_version_discovery_handles_forwarded_and_versioned_launchers(tmp_path):
+    from one_tone.editor_instance import discover_editor_color_baseline
+    for target, version, commit in (("trae", "1.107.1", ""), ("code", "1.140.0", "commit/")):
+        root = tmp_path / target
+        launcher = root / "bin" / f"{target}.cmd"
+        launcher.parent.mkdir(parents=True)
+        package = root / commit / "resources/app/package.json"
+        package.parent.mkdir(parents=True)
+        package.write_text(json.dumps({"version": version}), encoding="utf-8")
+        launcher.write_text(f'"%~dp0..\\{commit.replace("/", chr(92))}resources\\app\\out\\cli.js" %*', encoding="utf-8")
+        shim = tmp_path / f"{target}.cmd"
+        shim.write_text(f'@"{launcher}" %*', encoding="utf-8")
+        assert discover_editor_color_baseline(shim) == version
+        assert discover_editor_color_baseline(launcher) == version
+
+
+def test_preview_inventory_uses_actual_windows_and_unknown_editor_capabilities(tmp_path, capsys, monkeypatch):
+    from one_tone.adapters.windows import WindowsAdapter, WindowsConfig, InMemoryRegistryBackend, InMemoryDesktopBackend
+    from one_tone.adapters.vscode_family import EditorSpec, VSCodeFamilyAdapter
+    windows = WindowsAdapter(WindowsConfig(tmp_path / "wallpapers"), InMemoryRegistryBackend({"CurrentBuild": "26200", "AppsUseLightTheme": 0, "SystemUsesLightTheme": 1}), InMemoryDesktopBackend())
+    editor = VSCodeFamilyAdapter(EditorSpec("vscode", "code", tmp_path / "settings.json", tmp_path / "extensions"))
+    monkeypatch.setattr("one_tone.cli.build_target_adapters", lambda *args: {"windows": windows, "vscode": editor})
+    assert main(["preview", "#22C55E", "--targets", "windows,vscode", "--plans-dir", str(tmp_path / "plans"), "--output", "json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    fields = {target: {entry["technical_field"]: entry for group in groups.values() for entry in group} for target, groups in payload["field_inventory"].items()}
+    assert fields["windows"]["StartTaskbarColorPrevalence"]["capability_status"] == "unsupported"
+    assert fields["windows"]["EnableTransparency"]["generated_value"] == {"light": 0, "dark": 0}
+    assert fields["vscode"]["editor.foreground"]["capability_status"] == "unsupported"
+    assert fields["vscode"]["editor.foreground"]["generated_value"] is None
+    assert not (tmp_path / "wallpapers").exists()
+
+
 def test_preview_json_output_contains_plan_id_and_targets(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("ONE_TONE_CHATGPT_APP_THEME_CONFIG", str(tmp_path / "missing-config.toml"))
     code = main([
@@ -129,7 +161,7 @@ def test_vscode_family_adapter_resolves_path_cli_fallback(monkeypatch, tmp_path)
     settings_path = tmp_path / 'settings.json'
     settings_path.write_text('{}', encoding='utf-8')
     extensions_dir = tmp_path / 'extensions'
-    spec = EditorSpec('vscode', Path('code'), settings_path, extensions_dir)
+    spec = EditorSpec('vscode', Path('code'), settings_path, extensions_dir, color_baseline="1.140.0")
 
     monkeypatch.setattr(
         'one_tone.adapters.vscode_family.shutil.which',
@@ -158,6 +190,9 @@ def test_vscode_adapter_prefers_generic_portable_layout_over_default_user_paths(
     executable = tmp_path / "portable" / "bin" / "code.cmd"
     executable.parent.mkdir(parents=True)
     executable.write_text("@echo off", encoding="utf-8")
+    package = executable.parent.parent / "resources/app/package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text('{"version":"1.140.0"}', encoding="utf-8")
     portable_settings = tmp_path / "portable" / "data" / "user-data" / "User" / "settings.json"
     portable_extensions = tmp_path / "portable" / "data" / "extensions"
     portable_settings.parent.mkdir(parents=True)

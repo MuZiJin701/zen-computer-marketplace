@@ -7,7 +7,7 @@ import shutil
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from .adapters import (
     ChromeAdapter,
@@ -20,8 +20,13 @@ from .adapters import (
 )
 from .editor_instance import EditorSpec, editor_spec_from_plan, resolve_editor_spec
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
+from .adapters.chrome import _manifest
+from .adapters.codex import _theme_updates
+from .adapters.windows import _theme_registry_values
+from .adapters.vscode_family import build_theme_json
+from .field_mappings import TERMINAL_APPEARANCE_FIELDS, TERMINAL_FIELD_MAPPINGS
 from .inventory import inventory_groups
-from .plan import PlanIntegrityError, create_plan, load_plan, save_plan
+from .plan import Plan, PlanIntegrityError, create_plan, load_plan, save_plan
 from .storage import json_safe
 from .transaction import TransactionStatus, TransactionStore, apply_plan, verify_plan
 
@@ -246,6 +251,32 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
     return registry
 
 
+def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
+    values = {}
+    for mode in ("light", "dark"):
+        palette = plan.palette_for(mode)
+        if target in {"vscode", "trae"}:
+            generated = build_theme_json(plan, "One Tone", mode, baseline=plan.target_instances.get(target, {}).get("color_baseline", ""))["colors"]
+        elif target == "chrome":
+            theme = _manifest(plan, mode)["theme"]
+            generated = {**theme["colors"], **{f"{group}.{key}": value for group in ("tints", "properties") for key, value in theme[group].items()}}
+        elif target == "chatgpt-app":
+            generated = {f"{table.removeprefix('desktop.')}.{key}": value for table, entries in _theme_updates(plan.palettes).items() for key, value in entries.items()}
+            generated["appearanceTheme"] = "system"
+        elif target == "terminal":
+            generated = {mapping.field: palette[mapping.palette_key] for mapping in TERMINAL_FIELD_MAPPINGS}
+            generated.update({name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items() if value is not None})
+            generated["window.applicationTheme"] = "system"
+        elif target == "windows":
+            generated = {**_theme_registry_values(plan), "wallpaper": {"color": plan.palette_for(plan.mode)["surface"]}}
+        else:
+            generated = {}
+        for name, value in generated.items():
+            if plan.field_capabilities.get(target, {}).get(name) == "supported":
+                values.setdefault(name, {})[mode] = value
+    return values
+
+
 def _preview(args: argparse.Namespace) -> int:
     targets = _target_names(args.targets)
     adapters = build_target_adapters(targets, args.state_dir)
@@ -255,6 +286,9 @@ def _preview(args: argparse.Namespace) -> int:
         for target, adapter in adapters.items()
         if hasattr(adapter, "target_instance")
     }
+    for target, result in detected.items():
+        if result.status == "skipped":
+            target_instances[target] = {"status": "skipped", "reason": result.message}
     plan = create_plan(args.seed_color, targets, target_instances=target_instances)
     path = save_plan(plan, args.plans_dir)
     unsupported_count = sum(result.status != "ok" for result in detected.values())
@@ -265,6 +299,7 @@ def _preview(args: argparse.Namespace) -> int:
             "plan_id": plan.id,
             "mode_palettes": plan.palettes,
             "field_capabilities": plan.field_capabilities,
+            "appearance_policy": plan.appearance_policy,
             "target_instances": plan.target_instances,
             "targets": [
                 {
@@ -282,7 +317,7 @@ def _preview(args: argparse.Namespace) -> int:
             "selected_mode": plan.mode,
             "mode_semantics": "Mode is a presentation variant of the Seed Color; it does not change Windows system mode",
             "field_inventory": {
-                target: inventory_groups(target)
+                target: inventory_groups(target, plan.field_capabilities[target], _preview_values(plan, target))
                 for target in plan.targets
             },
             "warnings": unsupported_count,
@@ -297,6 +332,7 @@ def _preview(args: argparse.Namespace) -> int:
     for target, result in detected.items():
         print(f"- {target}: {result.status} — {result.message}")
     print("Validation:")
+    print("- Appearance policy: solid Windows/Terminal/ChatGPT windows; preserve fonts and Windows modes; Chrome activation remains manual")
     print("- Contrast: PASS")
     print("- Appearance safety: PASS")
     print("Field regions:")
@@ -342,9 +378,9 @@ def _rollback(args: argparse.Namespace) -> int:
 
 def _aggregate_status(results) -> str:
     statuses = [result.status for result in results.values()]
-    if any(status == "failed" for status in statuses):
+    if not any(result.verified and result.status in {"ok", "partial"} for result in results.values()):
         return "failed"
-    if any(status in {"partial", "skipped"} for status in statuses):
+    if any(status in {"partial", "skipped", "failed"} for status in statuses):
         return "partial"
     return "ok"
 

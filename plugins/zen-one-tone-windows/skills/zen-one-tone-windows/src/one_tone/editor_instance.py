@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,7 @@ class EditorSpec:
     resolution_status: str = "ok"
     resolution_message: str = ""
     resolution_source: str = ""
+    color_baseline: str = ""
 
     def target_instance(self) -> dict[str, str]:
         instance = {"status": self.resolution_status}
@@ -25,12 +27,51 @@ class EditorSpec:
                 "executable": str(self.executable),
                 "settings_path": str(self.settings_path),
                 "extensions_dir": str(self.extensions_dir),
+                "color_baseline": self.color_baseline,
             })
             if self.resolution_source:
                 instance["source"] = self.resolution_source
         elif self.resolution_message:
             instance["reason"] = self.resolution_message
         return instance
+
+
+def discover_editor_color_baseline(executable: Path) -> str:
+    shim = executable.with_suffix(".shim")
+    if shim.is_file():
+        try:
+            match = re.search(r'^path = "([^"]+)"$', shim.read_text(encoding="utf-8"), re.MULTILINE)
+        except OSError:
+            return ""
+        if not match:
+            return ""
+        executable = Path(match[1])
+    metadata_paths = []
+    # Resolve documented launcher forwarding and cli.js paths without executing it.
+    for _ in range(3):
+        if executable.suffix.lower() not in {".cmd", ".bat"}:
+            break
+        try:
+            contents = executable.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            break
+        quoted = re.findall(r'"([^"\r\n]+)"', contents)
+        paths = [Path(value.replace("%~dp0", str(executable.parent) + os.sep)) for value in quoted]
+        metadata_paths.extend(path.parent.parent / "package.json" for path in paths if path.name == "cli.js")
+        forwarded = next((path for path in paths if path.suffix.lower() in {".cmd", ".bat"} and path.is_absolute() and path != executable), None)
+        if forwarded is None:
+            break
+        executable = forwarded
+    # Read only this launcher's product roots, never an unrelated installation.
+    metadata_paths.extend(root / "resources/app/package.json" for root in (executable.parent, executable.parent.parent))
+    for path in metadata_paths:
+        try:
+            version = json.loads(path.read_text(encoding="utf-8")).get("version")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if version in {"1.107.1", "1.140.0"}:
+            return version
+    return ""
 
 
 def _launcher_argument(executable: Path, argument: str) -> Path | None:
@@ -77,16 +118,17 @@ def resolve_editor_spec(
     extensions_override: Path | None,
     artifacts_dir: Path,
 ) -> EditorSpec:
+    color_baseline = discover_editor_color_baseline(executable)
     launcher_settings = _launcher_argument(executable, "user-data-dir")
     launcher_extensions = _launcher_argument(executable, "extensions-dir")
     if settings_override is not None or extensions_override is not None:
         settings = settings_override or (launcher_settings / "User" / "settings.json" if launcher_settings else default_candidates[0][0])
         extensions = extensions_override or launcher_extensions or default_candidates[0][1]
-        return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_source="environment")
+        return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_source="environment", color_baseline=color_baseline)
     if launcher_settings is not None or launcher_extensions is not None:
         settings = launcher_settings / "User" / "settings.json" if launcher_settings else default_candidates[0][0]
         extensions = launcher_extensions or default_candidates[0][1]
-        return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_source="launcher")
+        return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_source="launcher", color_baseline=color_baseline)
 
     existing = _portable_editor_candidates(executable) + [candidate for candidate in default_candidates if candidate[0].is_file() or candidate[1].is_dir()]
     if existing:
@@ -99,7 +141,7 @@ def resolve_editor_spec(
             settings, extensions, _ = winners[0]
             return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_status="skipped", resolution_message=f"{target} configuration paths are ambiguous: {description}")
         settings, extensions, source = winners[0]
-        return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_source=source)
+        return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_source=source, color_baseline=color_baseline)
     settings, extensions, source = default_candidates[0]
     return EditorSpec(target, executable, settings, extensions, artifacts_dir=artifacts_dir, resolution_status="skipped", resolution_message=f"{target} configuration instance was not found", resolution_source=source)
 
@@ -108,7 +150,7 @@ def editor_spec_from_plan(target: str, context: dict[str, object], fallback: Edi
     if context.get("status") != "ok":
         return EditorSpec(target, fallback.executable, fallback.settings_path, fallback.extensions_dir, artifacts_dir=fallback.artifacts_dir, resolution_status="skipped", resolution_message=str(context.get("reason") or f"{target} has no resolved configuration instance in Plan"))
     try:
-        return EditorSpec(target, Path(str(context["executable"])), Path(str(context["settings_path"])), Path(str(context["extensions_dir"])), artifacts_dir=fallback.artifacts_dir, resolution_source=str(context.get("source") or "plan"))
+        return EditorSpec(target, Path(str(context["executable"])), Path(str(context["settings_path"])), Path(str(context["extensions_dir"])), artifacts_dir=fallback.artifacts_dir, resolution_source=str(context.get("source") or "plan"), color_baseline=str(context.get("color_baseline") or ""))
     except (KeyError, TypeError):
         return EditorSpec(target, fallback.executable, fallback.settings_path, fallback.extensions_dir, artifacts_dir=fallback.artifacts_dir, resolution_status="skipped", resolution_message=f"{target} Plan instance paths are incomplete")
 

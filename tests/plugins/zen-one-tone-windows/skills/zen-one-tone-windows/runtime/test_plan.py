@@ -6,6 +6,22 @@ from one_tone.palette import generate_palette
 from one_tone.plan import PlanIntegrityError, compute_plan_hash, create_plan, load_plan, save_plan
 
 
+def test_old_plan_requires_preview_without_blocking_historical_rollback(tmp_path):
+    from one_tone.transaction import TransactionStore, apply_plan
+    from one_tone.adapters.chrome import ChromeAdapter
+    plan = create_plan("#22C55E", ["chrome"])
+    adapter = ChromeAdapter(tmp_path / "themes")
+    store = TransactionStore(tmp_path / "transactions")
+    record = apply_plan(plan, {"chrome": adapter}, store, confirm=True)
+    payload = plan.to_dict()
+    payload.pop("appearance_policy", None)
+    payload["hash"] = compute_plan_hash(payload)
+    (tmp_path / f"{plan.id}.json").write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(PlanIntegrityError, match="Preview"):
+        load_plan(plan.id, tmp_path)
+    assert store.rollback(record.id, {"chrome": ChromeAdapter(tmp_path / "themes")}).status.value == "ROLLED_BACK"
+
+
 def test_plan_round_trips_with_stable_hash(tmp_path):
     plan = create_plan("#7C3AED", ["chrome", "windows"], plan_id="plan-test-001")
     path = save_plan(plan, tmp_path)
@@ -71,7 +87,7 @@ def test_plan_persists_both_mode_palettes_and_capabilities(tmp_path):
 
 
 def test_plan_includes_public_list_selection_backgrounds_for_trae():
-    plan = create_plan("#10B981", ["trae"], plan_id="plan-trae-list-selection-001")
+    plan = create_plan("#10B981", ["trae"], plan_id="plan-trae-list-selection-001", target_instances={"trae": {"color_baseline": "1.107.1"}})
 
     assert plan.field_capabilities["trae"]["list.inactiveSelectionBackground"] == "supported"
     assert plan.field_capabilities["trae"]["list.focusBackground"] == "supported"

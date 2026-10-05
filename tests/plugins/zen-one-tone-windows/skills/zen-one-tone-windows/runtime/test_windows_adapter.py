@@ -18,6 +18,59 @@ from one_tone.palette import contrast_ratio
 from one_tone.plan import create_plan
 
 
+def test_high_contrast_api_failure_and_absent_transparency_restore(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(windows_module.ctypes, "windll", SimpleNamespace(user32=SimpleNamespace(SystemParametersInfoW=lambda *args: 0)), raising=False)
+    assert windows_module.WindowsDesktopBackend().get_high_contrast() is None
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "SystemUsesLightTheme": 0})
+    adapter = WindowsAdapter(WindowsConfig(tmp_path / "wallpapers"), registry, InMemoryDesktopBackend())
+    adapter.snapshot(tmp_path / "backup")
+    plan = create_plan("#22C55E", ["windows"])
+    assert adapter.apply(plan).changed
+    registry.values["EnableTransparency"] = 1
+    original = dict(registry.values)
+    assert not adapter.verify(plan).verified
+    assert registry.values == original
+    assert adapter.rollback(tmp_path / "backup").verified
+    assert "EnableTransparency" not in registry.values
+
+
+def test_windows_mixed_modes_transparency_and_high_contrast_are_independent(tmp_path):
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "AppsUseLightTheme": 1, "SystemUsesLightTheme": 0, "EnableTransparency": 1})
+    desktop = InMemoryDesktopBackend()
+    adapter = WindowsAdapter(WindowsConfig(tmp_path), registry, desktop)
+    plan = create_plan("#22C55E", ["windows"], mode="light")
+    detected = adapter.detect()
+    assert detected.metadata["app_mode"] == "light"
+    assert detected.metadata["shell_mode"] == "dark"
+    original = dict(registry.values)
+    adapter.snapshot(tmp_path / "backup")
+    result = adapter.apply(plan)
+    assert result.metadata["field_capabilities"]["StartTaskbarColorPrevalence"] == "applied"
+    assert registry.values["EnableTransparency"] == 0
+    assert registry.values["AppsUseLightTheme"] == 1
+    assert registry.values["SystemUsesLightTheme"] == 0
+    assert adapter.verify(plan).verified
+    assert adapter.rollback(tmp_path / "backup").verified
+    assert registry.values == original
+
+
+def test_windows_high_contrast_api_unknown_or_active_preserves_configuration(tmp_path):
+    class HighContrastDesktop(InMemoryDesktopBackend):
+        def get_high_contrast(self):
+            return self.high_contrast
+
+    for state in (True, None):
+        desktop = HighContrastDesktop()
+        desktop.high_contrast = state
+        registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "highContrast": False, "EnableTransparency": 1})
+        adapter = WindowsAdapter(WindowsConfig(tmp_path), registry, desktop)
+        original = dict(registry.values)
+        assert adapter.detect().metadata["high_contrast"] is state
+        assert adapter.apply(create_plan("#22C55E", ["windows"])).status == "skipped"
+        assert registry.values == original and desktop.wallpaper == ""
+
+
 def test_build_26200_is_windows_11_even_if_product_name_is_legacy():
     backend = InMemoryRegistryBackend({"CurrentBuild": "26200", "ProductName": "Windows 10 Home China"})
     assert detect_windows_version(backend) == ("windows-11", 26200)
@@ -67,7 +120,7 @@ def test_wallpaper_generation_is_one_solid_tonal_surface_color(tmp_path):
 
 
 def test_windows_adapter_snapshots_applies_verifies_and_restores(tmp_path):
-    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "AppsUseLightTheme": 1, "SystemUsesLightTheme": 1})
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "AppsUseLightTheme": 1, "SystemUsesLightTheme": 0})
     desktop = InMemoryDesktopBackend(wallpaper="C:/old.jpg")
     old_wallpaper = tmp_path / "old.jpg"
     old_wallpaper.write_bytes(b"old wallpaper")
@@ -85,7 +138,7 @@ def test_windows_adapter_snapshots_applies_verifies_and_restores(tmp_path):
 
 
 def test_windows_verify_reloads_generated_wallpaper_path_in_new_process(tmp_path):
-    registry = InMemoryRegistryBackend({"CurrentBuild": "26200"})
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "SystemUsesLightTheme": 0})
     desktop = InMemoryDesktopBackend()
     plan = create_plan("#00A86B", ["windows"], plan_id="plan-windows-cross-process-verify-001")
 
@@ -163,7 +216,7 @@ def test_windows_light_mode_attempts_taskbar_setting_and_reports_native_visual_g
     registry = InMemoryRegistryBackend({
         "CurrentBuild": "26200",
         "AppsUseLightTheme": 0,
-        "SystemUsesLightTheme": 0,
+        "SystemUsesLightTheme": 1,
         "AutoColorization": 0,
         "StartTaskbarColorPrevalence": 0,
     })
@@ -175,8 +228,8 @@ def test_windows_light_mode_attempts_taskbar_setting_and_reports_native_visual_g
     assert result.status == "partial"
     assert registry.values["StartTaskbarColorPrevalence"] == 1
     assert result.metadata["field_capabilities"]["AccentColorMenu"] == "applied"
-    assert result.metadata["field_capabilities"]["StartTaskbarColorPrevalence"] == "partial"
-    assert adapter.verify(plan).metadata["field_capabilities"]["StartTaskbarColorPrevalence"] == "partial"
+    assert result.metadata["field_capabilities"]["StartTaskbarColorPrevalence"] == "unsupported"
+    assert adapter.verify(plan).metadata["field_capabilities"]["StartTaskbarColorPrevalence"] == "unsupported"
 
 
 def test_windows_accent_palette_is_an_eight_color_bgra_binary_value():
@@ -187,7 +240,7 @@ def test_windows_accent_palette_is_an_eight_color_bgra_binary_value():
 
 
 def test_windows_apply_keeps_white_shell_glyphs_legible(tmp_path):
-    registry = InMemoryRegistryBackend({"CurrentBuild": "26200"})
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "SystemUsesLightTheme": 0})
     adapter = WindowsAdapter(WindowsConfig(tmp_path), registry, InMemoryDesktopBackend())
     plan = create_plan("#39FF14", ["windows"], plan_id="plan-windows-shell-contrast-001")
 
@@ -292,7 +345,7 @@ def test_windows_registry_writes_both_prevalence_toggles_to_distinct_paths(monke
 
 def test_windows_apply_persists_an_absolute_wallpaper_path(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    registry = InMemoryRegistryBackend({"CurrentBuild": "26200"})
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26200", "SystemUsesLightTheme": 0})
     desktop = InMemoryDesktopBackend()
     adapter = WindowsAdapter(WindowsConfig(Path("relative-wallpapers")), registry, desktop)
     plan = create_plan("#00A86B", ["windows"], plan_id="plan-windows-absolute-wallpaper-001")

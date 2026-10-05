@@ -49,16 +49,16 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 - Plan ID、Transaction ID 和 target 必须是安全路径组件；未知 target 可安全 skipped，但不得创建越界路径。
 - Plan、事务和目标配置 JSON 使用同目录临时文件加原子替换，避免中断造成截断文件。
 - 事务快照默认保留最近 5 个已完成事务；只清理工具生成的数据。
-- Seed Color 原样作为 Palette/Codex 的 surface 和 Windows 壁纸颜色；Windows Shell 强调色从 Palette `accent` 派生，并必须保持固定白色 Shell 图标至少 `4.5:1` 对比度；默认不得修改用户浅/深色模式或 AutoColorization。
+- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface 与 Windows 壁纸继续使用派生 Tonal surface。Windows Shell accent 保护固定白色图标 `4.5:1`；确认 Apply 关闭透明效果，保持应用/Shell 模式、AutoColorization、高对比度和字体。高对比度开启或 API 未知时安全跳过 Windows。
 - Cursor 暂不属于用户可见支持目标；显式输入 cursor 必须安全 skipped，不得访问或修改 Cursor 文件。
 
 ## 当前实现边界
 
-- Windows Terminal 已覆盖所有发现的 Profile：统一 Scheme、ANSI、光标和 Tab 字段；窗口主题使用 applicationTheme = system，不强制深色模式。
+- Windows Terminal 覆盖 defaults、所有 Profile 及已有 unfocusedAppearance；按版本关闭 Acrylic/Mica、设实心 opacity、清空背景图片、移除固定 tabColor，并保留字体和非受管偏好。成对 colorScheme 需 >=1.16，成对 theme/Mica 需 >=1.17，frame/unfocusedFrame 需 >=1.22；平台能力另行校验，未知项报告 partial。Scheme 不写 selectionForeground。
 - Windows Terminal 正文在两种 Mode 的受管背景均要求 `7:1`；原生 `adjustIndistinguishableColors = always` 按 Preview 发现的版本能力应用。Shell/PSReadLine 默认只选 PowerShell 7 `pwsh`，不回退 Windows PowerShell；配置 Verify 与真实渲染验收分别报告。
-- VS Code/TRAE 已覆盖标准 Workbench 的选择、光标、终端 ANSI、链接、通知、诊断和语义高亮字段；TRAE 专属 AI 面板仍需真实应用验证。
+- VS Code/TRAE 以固定公开清单与实际 Workbench 注册字段的交集为范围；当前核查基线为 1.107.1/1.140.0，未知版本安全跳过。透明装饰叠层与实心窗口策略分开，文字检查真实合成背景；私有 AI 能力 unsupported。
 - Chrome 使用 Manifest V3 本地主题，覆盖框架、工具栏、标签、书签页、NTP、链接和地址栏文字；激活仍由用户手动确认。
-- 文字对比度目标为深层背景 7:1，surface/强调背景文字 4.5:1；视觉 accent 不直接作为文字色。
+- 普通正文在实际受管背景以及深层背景文字目标为 7:1，其他功能/状态文字为 4.5:1；视觉 accent 不直接作为文字色，装饰叠层按合成背景校验。
 - Codex 保持独立 Adapter，不与 VS Code/TRAE Adapter 合并。
 
 ## 技术约束

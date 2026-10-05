@@ -10,6 +10,30 @@ from one_tone.adapters.codex import (
 from one_tone.plan import create_plan
 
 
+def test_chatgpt_repairs_missing_semantics_follows_system_and_restores(tmp_path):
+    path = write_codex_v1_fixture(tmp_path / "config.toml")
+    text = path.read_text(encoding="utf-8")
+    text = text.replace('diffAdded = "#2EFF45"\n', '')
+    text = text.replace('[desktop.appearanceDarkChromeTheme.semanticColors]\ndiffRemoved = "#FF9AAF"\nskill = "#FFE66D"\n', '')
+    path.write_text(text, encoding="utf-8")
+    original = path.read_bytes()
+    adapter = CodexAdapter(path)
+    plan = create_plan("#22C55E", ["chatgpt-app"])
+    adapter.snapshot(tmp_path / "backup")
+    assert adapter.apply(plan).status == "ok"
+    desktop = tomllib.loads(path.read_text(encoding="utf-8"))["desktop"]
+    assert desktop["appearanceTheme"] == "system"
+    for mode in ("Light", "Dark"):
+        assert set(desktop[f"appearance{mode}ChromeTheme"]["semanticColors"]) == {"diffAdded", "diffRemoved", "skill"}
+    assert adapter.verify(plan).verified
+    path.write_text(path.read_text(encoding="utf-8").replace('diffAdded = ', 'unmanaged = ', 1), encoding="utf-8")
+    before = path.read_bytes()
+    assert not adapter.verify(plan).verified
+    assert path.read_bytes() == before
+    assert adapter.rollback(tmp_path / "backup").verified
+    assert path.read_bytes() == original
+
+
 def write_codex_v1_fixture(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -110,7 +134,7 @@ def test_codex_apply_raises_existing_theme_contrast_to_maximum(tmp_path):
     assert adapter.apply(plan).status == "ok"
 
     payload = tomllib.loads(path.read_text(encoding="utf-8"))
-    assert payload["desktop"]["appearanceTheme"] == "dark"
+    assert payload["desktop"]["appearanceTheme"] == "system"
     assert payload["desktop"]["appearanceLightChromeTheme"]["contrast"] == 100
     assert payload["desktop"]["appearanceDarkChromeTheme"]["contrast"] == 100
 

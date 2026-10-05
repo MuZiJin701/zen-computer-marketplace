@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 from .adapters import AdapterResult, ThemeAdapter, UnsupportedAdapter
 from .inventory import inventory_groups, inventory_report
-from .plan import Plan
+from .plan import APPEARANCE_POLICY, Plan, PlanIntegrityError, compute_plan_hash
 from .storage import atomic_write_text, json_safe, validate_safe_component
 
 class TransactionStatus(str, Enum):
@@ -206,6 +206,10 @@ def apply_plan(
 ) -> TransactionRecord:
     if not confirm:
         raise ValueError("Apply requires confirm=True")
+    if plan.hash != compute_plan_hash(plan.to_dict()):
+        raise PlanIntegrityError(f"Plan Hash mismatch for {plan.id}")
+    if plan.appearance_policy != APPEARANCE_POLICY:
+        raise PlanIntegrityError("Recreate the Plan through Preview for the current appearance policy")
     record = store.create(plan)
     partial = False
     successful_targets = 0

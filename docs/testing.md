@@ -37,11 +37,17 @@ The root project is a test harness. Each Skill owns its launcher and runtime; te
 - VS Code and TRAE tests cover the standard public Workbench field inventory, Git decoration fields, exact contributed Light/Dark labels, enabled auto-detect settings and discoverable TRAE-specific fields.
 - VS Code/TRAE instance tests cover standard and portable layouts, multiple-instance ambiguity, read-only path discovery, Plan-persisted paths, registration evidence, and non-zero CLI results with successful installation evidence.
 - ChatGPT App tests cover every verified v1 color field plus fonts-table repair, opaque-window and maximum-contrast settings in both theme tables, while preserving unknown configuration keys and existing font values.
-- Chrome tests cover exactly two canonical Light/Dark unpacked directories, internal ZIP manifests, all public colors, tints and display properties, plus manual activation status.
+- Chrome tests independently cover the fixed parser's 24 colors, 6 tints and applicable properties in exactly two unpacked Light/Dark directories and internal ZIPs; invalid fields and image-only properties are absent. Drift/missing artifacts fail read-only Verify; activation remains manual.
 - Transaction tests retain per-Target Snapshot, operation persistence, compensation and rollback behavior and cover JSON-safe binary report values.
 - CLI tests cover parseable JSON-mode Apply and Verify responses when nested report metadata contains binary values.
 
 ## Test style
+
+Public coverage regressions use an independent fixture with 971 documented VS Code IDs, 35 alpha constraints and source-derived 1.107.1/1.140.0 registrations; generated sets must exactly match the applicable intersections, excluding five Windows/ordinary-theme inapplicable fields. Numerical regressions check real composited find backgrounds, button/input hover pairs, focused icons, distinguishable Diff/Merge regions and opaque primary text. Font, high-contrast, cursor/glyph and unknown preferences remain unchanged. Runtime JSON is required in independently distributed Skill packages.
+
+Windows regressions include mixed App/Shell modes, active/unknown high contrast, simulated API failure, actual Shell taskbar capability, transparency drift and absent-value restoration. Terminal covers version/platform gates, solid defaults/Profile/unfocused policies, removal of fixed tabColor and invalid Scheme selectionForeground, preservation of custom theme preferences and only two native variants. ChatGPT tests repair missing semantic/font structures and verify system appearance plus every managed field. Editor discovery tests forwarded/versioned launchers, unknown baselines and exact contribution paths/types/labels; complete non-frame/token drift fails Verify without writes.
+
+Plan/Transaction regressions reject old appearance policies and changed field contracts before Transaction/Snapshot creation while keeping historical Rollback independent. Preview must report actual capability statuses and generated values. Python compilation is checked with `uv run python -m compileall -q plugins/zen-one-tone-windows/skills/zen-one-tone-windows/src`; no type checker or new dependency is installed. Source and visual limits are recorded in [field evidence](theme-field-coverage-evidence.md).
 
 Tests cross the highest available Seam and assert external behavior:
 

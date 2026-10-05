@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol
 
 from ..plan import Plan
-from ..inventory import inventory_for
+from ..inventory import field_inventory_for
 
 AdapterStatus = Literal["ok", "partial", "failed", "skipped"]
 
@@ -71,6 +71,6 @@ def field_capabilities(
     unsupported = unsupported or set()
     statuses = statuses or {}
     return {
-        name: statuses.get(name, "unsupported" if name in unsupported else "supported")
-        for name in inventory_for(target)
+        entry["technical_field"]: statuses.get(entry["technical_field"], "unsupported" if entry["technical_field"] in unsupported else entry["capability_status"])
+        for entry in field_inventory_for(target)
     }

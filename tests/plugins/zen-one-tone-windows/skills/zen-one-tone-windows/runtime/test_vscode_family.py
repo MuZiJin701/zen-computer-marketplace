@@ -1,10 +1,94 @@
 import json
 import subprocess
 import zipfile
+from pathlib import Path
+import pytest
 
 from one_tone.adapters.vscode_family import EditorSpec, VSCodeFamilyAdapter, build_theme_json, build_vsix
-from one_tone.palette import contrast_ratio
+from one_tone.palette import contrast_ratio, parse_hex_color
 from one_tone.plan import create_plan
+
+
+@pytest.mark.parametrize("seed", ["#22C55E", "#FFD700", "#7C3AED"])
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_editor_real_highlight_hover_and_diff_backgrounds(seed, mode):
+    colors = build_theme_json(create_plan(seed, ["vscode"]), "One Tone", mode)["colors"]
+    def composite(color):
+        if len(color) == 7:
+            return color
+        alpha = int(color[-2:], 16) / 255
+        return "#" + "".join(f"{round(a * alpha + b * (1 - alpha)):02X}" for a, b in zip(parse_hex_color(color[:7]), parse_hex_color(colors["editor.background"])))
+    for foreground, backgrounds in {
+        "button.foreground": ["button.background", "button.hoverBackground"],
+        "button.secondaryForeground": ["button.secondaryBackground", "button.secondaryHoverBackground"],
+        "inputOption.activeForeground": ["inputOption.activeBackground", "inputOption.hoverBackground"],
+        "quickInputList.focusIconForeground": ["quickInputList.focusBackground"],
+        "editor.findMatchHighlightForeground": ["editor.findMatchHighlightBackground"],
+        "editor.findMatchForeground": ["editor.findMatchBackground"],
+    }.items():
+        for background in backgrounds:
+            assert contrast_ratio(colors[foreground], composite(colors[background])) >= 4.5, (foreground, background)
+    added = composite(colors["diffEditor.insertedTextBackground"])
+    removed = composite(colors["diffEditor.removedTextBackground"])
+    assert added != removed
+    for background in (added, removed):
+        assert contrast_ratio(background, colors["editor.background"]) >= 1.2
+        assert contrast_ratio(colors["editor.foreground"], background) >= 7
+
+
+@pytest.mark.parametrize("baseline", ["1.107.1", "1.140.0"])
+def test_editor_public_coverage_uses_independent_official_evidence(baseline):
+    evidence = json.loads((Path(__file__).parent / "fixtures/official-vscode-colors.json").read_text(encoding="utf-8"))
+    plan = create_plan("#22C55E", ["vscode"])
+    colors = build_theme_json(plan, "One Tone", "light", baseline=baseline)["colors"]
+    not_applicable = {"window.activeBorder", "window.inactiveBorder", "contrastBorder", "contrastActiveBorder", "editor.selectionForeground"}
+    assert set(colors) == set(evidence["registrations"][baseline]) - not_applicable
+    assert "panel.foreground" not in colors
+    for name in set(evidence["transparent"]) & set(colors):
+        assert len(colors[name]) == 9 and 0 < int(colors[name][-2:], 16) < 255
+    assert colors["terminal.ansiBlack"] != colors["terminal.ansiWhite"]
+    assert colors["terminal.ansiBrightBlack"] != colors["terminal.ansiWhite"]
+
+
+def test_editor_verify_detects_non_frame_theme_and_token_tampering(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.write_text('{}', encoding="utf-8")
+    spec = _editor_spec("vscode", "code", settings, tmp_path / "extensions")
+    plan = create_plan("#22C55E", ["vscode"])
+    def install(command, **kwargs):
+        with zipfile.ZipFile(command[2]) as archive:
+            destination = spec.extensions_dir / "one-tone.one-tone-vscode-0.1.0"
+            for name in archive.namelist():
+                path = destination / name.removeprefix("extension/")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.read(name))
+        (spec.extensions_dir / "extensions.json").write_text(json.dumps([{"identifier": {"id": "one-tone.one-tone-vscode"}, "relativeLocation": destination.name}]), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+    adapter = VSCodeFamilyAdapter(spec, command_runner=install)
+    adapter.apply(plan)
+    assert adapter.verify(plan).verified
+    path = spec.extensions_dir / "one-tone.one-tone-vscode-0.1.0/themes/one-tone-light-color-theme.json"
+    original = path.read_bytes()
+    for change in ("color", "token", "contribution"):
+        payload = json.loads(original)
+        if change == "color":
+            payload["colors"]["menu.foreground"] = "#FFFFFF"
+        elif change == "token":
+            payload["semanticTokenColors"]["function"] = "#FFFFFF"
+        else:
+            package = path.parent.parent / "package.json"
+            registration = json.loads(package.read_text(encoding="utf-8"))
+            registration["contributes"]["themes"][0]["path"] = "./themes/missing.json"
+            package.write_text(json.dumps(registration), encoding="utf-8")
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        before = path.read_bytes()
+        assert not adapter.verify(plan).verified
+        assert path.read_bytes() == before
+
+
+
+def _editor_spec(target, *args, **kwargs):
+    return EditorSpec(target, *args, color_baseline="1.107.1" if target == "trae" else "1.140.0", **kwargs)
 
 
 def _write_valid_extension(spec, registered=True):
@@ -14,10 +98,18 @@ def _write_valid_extension(spec, registered=True):
     (actual / "themes" / "one-tone-light-color-theme.json").write_text("{}", encoding="utf-8")
     (actual / "package.json").write_text(json.dumps({
         "contributes": {"themes": [
-            {"label": f"One Tone {spec.target} Dark"},
-            {"label": f"One Tone {spec.target} Light"},
+            {"label": f"One Tone {spec.target} Dark", "path": "./themes/one-tone-color-theme.json", "uiTheme": "vs-dark"},
+            {"label": f"One Tone {spec.target} Light", "path": "./themes/one-tone-light-color-theme.json", "uiTheme": "vs"},
         ]}
     }), encoding="utf-8")
+    artifacts = spec.artifacts_dir or spec.extensions_dir.parent / ".one-tone-artifacts"
+    archives = sorted(artifacts.glob("*.vsix"), key=lambda path: path.stat().st_mtime)
+    if archives:
+        with zipfile.ZipFile(archives[-1]) as archive:
+            for name in archive.namelist():
+                path = actual / name.removeprefix("extension/")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.read(name))
     if registered:
         (spec.extensions_dir / "extensions.json").write_text(json.dumps([{
             "identifier": {"id": f"one-tone.one-tone-{spec.target}"},
@@ -29,7 +121,7 @@ def _write_valid_extension(spec, registered=True):
 
 def test_vsix_contains_manifest_and_theme(tmp_path):
     plan = create_plan("#7C3AED", ["trae"], plan_id="plan-editor-001")
-    path = build_vsix(plan, tmp_path / "theme.vsix", EditorSpec("trae", "trae", tmp_path / "settings.json", tmp_path / "extensions"))
+    path = build_vsix(plan, tmp_path / "theme.vsix", _editor_spec("trae", "trae", tmp_path / "settings.json", tmp_path / "extensions"))
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         assert "extension/package.json" in names
@@ -43,7 +135,7 @@ def test_vsix_contains_manifest_and_theme(tmp_path):
 
 def test_vsix_keeps_dark_label_bound_to_dark_palette_when_plan_selects_light(tmp_path):
     plan = create_plan("#7C3AED", ["trae"], plan_id="plan-editor-mode-pair-001", mode="light")
-    path = build_vsix(plan, tmp_path / "theme.vsix", EditorSpec("trae", "trae", tmp_path / "settings.json", tmp_path / "extensions"))
+    path = build_vsix(plan, tmp_path / "theme.vsix", _editor_spec("trae", "trae", tmp_path / "settings.json", tmp_path / "extensions"))
 
     with zipfile.ZipFile(path) as archive:
         dark_theme = json.loads(archive.read("extension/themes/one-tone-color-theme.json"))
@@ -82,7 +174,8 @@ def test_vscode_field_mapping_drives_theme_and_inventory():
 
     mappings = vscode_field_mappings()
     assert len(mappings) == len({mapping.field for mapping in mappings})
-    assert set(colors) == {mapping.field for mapping in mappings}
+    assert set(colors) <= {mapping.field for mapping in mappings}
+    assert set(inventory) >= {mapping.field for mapping in mappings}
     assert all(
         inventory[mapping.field]["visual_role"] == mapping.visual_role
         and inventory[mapping.field]["text_class"] == mapping.text_class
@@ -116,7 +209,8 @@ def test_editor_theme_uses_matching_foregrounds_for_surface_and_background():
 
     palette = plan.palette_for(plan.mode)
     assert colors["editor.foreground"] == palette["foreground"]
-    assert colors["panel.foreground"] == palette["background_foreground"]
+    assert "panel.foreground" not in colors
+    assert contrast_ratio(colors["foreground"], colors["editor.background"]) >= 7
 
 
 def test_editor_theme_pairs_all_list_selection_states():
@@ -141,7 +235,6 @@ def test_light_editor_theme_keeps_dense_primary_text_on_light_surfaces():
         "editor.foreground",
         "sideBar.foreground",
         "activityBar.foreground",
-        "panel.foreground",
         "input.foreground",
         "dropdown.foreground",
         "terminal.foreground",
@@ -158,7 +251,8 @@ def test_editor_theme_uses_contrast_safe_text_for_accented_tokens():
 
     palette = plan.palette_for(plan.mode)
     assert theme["colors"]["editorCursor.foreground"] == palette["accent_text"]
-    assert theme["colors"]["editor.selectionForeground"] == palette["selection_foreground"]
+    assert "editor.selectionForeground" not in theme["colors"]
+    assert theme["colors"]["terminal.selectionForeground"] == palette["selection_foreground"]
     assert theme["colors"]["terminalCursor.foreground"] == palette["accent_text"]
     assert theme["colors"]["textLink.foreground"] == palette["accent_text"]
     assert theme["colors"]["errorForeground"] == palette["error_text"]
@@ -173,7 +267,7 @@ def test_editor_theme_uses_contrast_safe_text_for_accented_tokens():
 def test_editor_adapter_snapshots_applies_verifies_and_restores(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"workbench.colorTheme": "Default Dark+", "window.autoDetectColorScheme": False}), encoding="utf-8")
-    spec = EditorSpec("trae", "trae", settings, tmp_path / "extensions", ai_panel_supported=False)
+    spec = _editor_spec("trae", "trae", settings, tmp_path / "extensions", ai_panel_supported=False)
     def command_runner(command, **kwargs):
         _write_valid_extension(spec)
         return subprocess.CompletedProcess(command, 0)
@@ -198,7 +292,7 @@ def test_editor_adapter_snapshots_applies_verifies_and_restores(tmp_path):
 def test_editor_apply_enables_auto_detect_when_setting_is_missing(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"workbench.colorTheme": "Default Dark+"}), encoding="utf-8")
-    spec = EditorSpec("trae", "trae", settings, tmp_path / "extensions", ai_panel_supported=True)
+    spec = _editor_spec("trae", "trae", settings, tmp_path / "extensions", ai_panel_supported=True)
 
     def command_runner(command, **kwargs):
         _write_valid_extension(spec)
@@ -217,7 +311,7 @@ def test_editor_apply_leaves_valid_installed_extension_for_cli_force(tmp_path):
     extensions = tmp_path / "extensions"
     actual = extensions / "one-tone.one-tone-trae-0.1.0"
     settings.write_text(json.dumps({"workbench.colorTheme": "Default Dark+"}), encoding="utf-8")
-    spec = EditorSpec("trae", "trae", settings, extensions, ai_panel_supported=False)
+    spec = _editor_spec("trae", "trae", settings, extensions, ai_panel_supported=False)
     _write_valid_extension(spec)
 
     def command_runner(command, **kwargs):
@@ -233,7 +327,7 @@ def test_editor_apply_leaves_valid_installed_extension_for_cli_force(tmp_path):
 def test_editor_apply_rejects_unregistered_extension_directory(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"workbench.colorTheme": "Default Dark+"}), encoding="utf-8")
-    spec = EditorSpec("trae", "trae", settings, tmp_path / "extensions")
+    spec = _editor_spec("trae", "trae", settings, tmp_path / "extensions")
     _write_valid_extension(spec, registered=False)
 
     adapter = VSCodeFamilyAdapter(spec, command_runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0))
@@ -256,7 +350,7 @@ def test_editor_apply_recovers_from_cli_restart_required_state(tmp_path):
         "version": "0.1.0",
         "relativeLocation": "one-tone.one-tone-trae-0.1.0",
     }]), encoding="utf-8")
-    spec = EditorSpec("trae", "trae", settings, extensions, ai_panel_supported=False)
+    spec = _editor_spec("trae", "trae", settings, extensions, ai_panel_supported=False)
 
     def command_runner(command, **kwargs):
         return subprocess.CompletedProcess(
@@ -286,7 +380,7 @@ def test_editor_adapter_tracks_and_uninstalls_actual_extension_directory(tmp_pat
     extensions.mkdir()
     index = extensions / "extensions.json"
     index.write_text("[]", encoding="utf-8")
-    spec = EditorSpec("trae", "trae", settings, extensions, ai_panel_supported=False)
+    spec = _editor_spec("trae", "trae", settings, extensions, ai_panel_supported=False)
     actual = extensions / "one-tone.one-tone-trae-0.1.0"
     commands = []
 
@@ -319,7 +413,7 @@ def test_editor_verify_discovers_extension_after_new_adapter_instance(tmp_path):
         return subprocess.CompletedProcess(command, 0)
 
     plan = create_plan("#7C3AED", ["trae"], plan_id="plan-editor-cross-process-001")
-    spec = EditorSpec("trae", "trae", settings, extensions)
+    spec = _editor_spec("trae", "trae", settings, extensions)
     first_adapter = VSCodeFamilyAdapter(spec, command_runner=command_runner)
     assert first_adapter.snapshot(tmp_path / "backup").status == "ok"
     assert first_adapter.apply(plan).status == "ok"

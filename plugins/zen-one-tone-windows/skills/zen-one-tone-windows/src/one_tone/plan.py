@@ -13,6 +13,16 @@ from .inventory import expected_capabilities
 from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
+APPEARANCE_POLICY = {
+    "revision": "2026-10-05.v4",
+    "windows.EnableTransparency": 0,
+    "terminal": "solid profiles and unfocused appearances; paired native themes; remove fixed tabColor and background images",
+    "chatgpt-app.appearanceTheme": "system",
+    "fonts": "preserve; repair missing ChatGPT fonts tables only",
+    "system_modes_auto_colorization_high_contrast": "preserve",
+    "chrome_activation": "manual",
+}
+
 
 class PlanIntegrityError(ValueError):
     """Raised when a saved Plan no longer matches its recorded Hash."""
@@ -29,6 +39,7 @@ class Plan:
     palettes: dict[str, dict[str, str]]
     field_capabilities: dict[str, dict[str, str]] = field(default_factory=dict)
     target_instances: dict[str, dict[str, Any]] = field(default_factory=dict)
+    appearance_policy: dict[str, Any] = field(default_factory=lambda: dict(APPEARANCE_POLICY))
 
     def palette_for(self, mode: str) -> dict[str, str]:
         if mode not in {"light", "dark"}:
@@ -48,6 +59,7 @@ class Plan:
             "field_capabilities": {target: dict(fields) for target, fields in self.field_capabilities.items()},
             "target_instances": {target: dict(instance) for target, instance in self.target_instances.items()},
             "created_at": self.created_at,
+            "appearance_policy": dict(self.appearance_policy),
         }
         if include_hash:
             payload["hash"] = self.hash
@@ -93,11 +105,7 @@ def create_plan(
     coherence_errors = validate_mode_coherence(normalized_seed, palettes)
     if coherence_errors:
         raise ValueError("Generated palettes failed Mode coherence validation: " + "; ".join(coherence_errors))
-    capabilities = expected_capabilities(normalized_targets)
-    if "terminal" in capabilities:
-        instance = (target_instances or {}).get("terminal", {})
-        native = instance.get("native_correction", {})
-        capabilities["terminal"]["profile.adjustIndistinguishableColors"] = native.get("status", "unsupported")
+    capabilities = expected_capabilities(normalized_targets, target_instances)
     payload = {
         "id": safe_plan_id,
         "seed_color": normalized_seed,
@@ -110,6 +118,7 @@ def create_plan(
             for target, instance in (target_instances or {}).items()
         },
         "created_at": timestamp,
+        "appearance_policy": dict(APPEARANCE_POLICY),
     }
     return Plan(
         id=payload["id"],
@@ -148,6 +157,8 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
         raise PlanIntegrityError(f"Plan payload must be an object for {plan_id}")
     if "palette" in payload:
         raise PlanIntegrityError(f"legacy single-palette Plan {plan_id} must be recreated through Preview")
+    if payload.get("appearance_policy") != APPEARANCE_POLICY:
+        raise PlanIntegrityError(f"Plan {plan_id} must be recreated through Preview for the current appearance policy")
     required = {"id", "seed_color", "mode", "targets", "palettes", "created_at", "hash", "target_instances"}
     missing = required - payload.keys()
     if missing:
@@ -200,7 +211,7 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
             raise PlanIntegrityError(f"Plan target instance status is invalid for {plan_id}")
         if target in {"vscode", "trae"} and not validate_editor_instance(target, instance):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
-        required_instance_keys = ("settings_path",) if target == "terminal" else ("executable", "settings_path", "extensions_dir")
+        required_instance_keys = () if target == "windows" else ("settings_path",) if target == "terminal" else ("executable", "settings_path", "extensions_dir")
         if target not in {"vscode", "trae"} and status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
         if target == "terminal" and any(
@@ -214,6 +225,9 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
                 raise PlanIntegrityError(f"Plan terminal capability is invalid for {plan_id}")
             if native["status"] == "supported" and any(not isinstance(native.get(key), str) or not native[key] for key in ("executable", "version")):
                 raise PlanIntegrityError(f"Plan terminal capability evidence is missing for {plan_id}")
+    expected = expected_capabilities(payload["targets"], target_instances)
+    if field_capabilities != expected:
+        raise PlanIntegrityError(f"Plan {plan_id} field contract changed; recreate through Preview")
     return Plan(
         id=payload["id"],
         seed_color=payload["seed_color"],

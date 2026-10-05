@@ -1,47 +1,47 @@
 # 支持目标
 
-| 目标 | 范围 | 已知限制 |
+| 目标 | 范围 | 实际能力和保留项 |
 | --- | --- | --- |
-| `windows` | Windows 10/11 当前用户模式下的桌面壁纸、Start/Taskbar、标题栏强调色和 Quick Settings 活动卡片 | 壁纸使用 Seed 原色；Start/Taskbar、标题栏和固定白色图标的 Shell 卡片使用对比度安全的 Shell Accent；不修改浅/深色模式和自动取色；自动取色开启时报告 `partial` 并要求用户手动关闭；需要注册表和桌面后端，部分应用需要重启 |
-| `terminal` | Windows Terminal defaults、所有 Profile 及已有未聚焦配置、成对 Light/Dark Scheme、ANSI、光标、Tab/Tab Row、窗口区域、原生前景修正和可选 PowerShell 7/PSReadLine 预测颜色 | Preview 读取版本资源，`>= 1.16` 使用 `adjustIndistinguishableColors = always`；未知/旧版本保留字段并 partial；`applicationTheme` 保持 `system`；只选择 `pwsh`、不回退 Windows PowerShell；原生修正与配置回读不证明最终渲染阈值；修改后可能需要重启 |
-| `vscode` | VS Code 工作台、标题栏、侧边栏、Activity Bar、Tab、Panel、选择/光标、终端 ANSI、链接、诊断和语义高亮主题扩展 | AI 专属面板可能不受标准主题字段控制；Verify 会重新发现持久化扩展目录 |
-| `trae` | TRAE 通用工作台、Git decoration、选择/光标、终端 ANSI、链接、诊断、语义高亮和主题扩展 | TRAE 专属 AI 界面可能不受标准主题字段控制；私有 Git 字段不猜测；需重启后 Verify，Verify 会重新发现扩展目录 |
-| `chatgpt-app` | ChatGPT App `config.toml` 的已验证 v1 桌面主题字段；浅色和深色表使用同一 Seed 派生的 Tonal `surface` | 缺失的 `fonts` table 会在 Apply 补齐，已有字体值保持不变；`opaqueWindows` 为 `true`、`contrast` 为 `100`；内嵌终端独立 ANSI/xterm 修正没有已验证用户入口，子能力 unsupported；配置匹配不代表终端渲染通过；修改后需要用户手动重启 |
-| `chrome` | 生成 Manifest V3 Chrome Light/Dark 两个 canonical unpacked 主题目录，覆盖浏览器框架、工具栏、标签、书签页、NTP、链接和地址栏文字；ZIP 仅为内部打包产物 | Chrome 不支持本工具静默安装；用户需要在 `chrome://extensions` 手动加载和确认 |
+| `windows` | Windows 10 22H2+（build >=19045）/Windows 11 22H2+（build >=22621）；壁纸、Shell Accent、Start/Taskbar、标题栏、DWM、透明效果 | 确认 Apply 写 EnableTransparency=0；壁纸为 Seed 派生 Tonal surface；Shell Accent 保护固定白色图标 >=4.5。App/Shell 模式分别读取并保持，高对比度 API 开启/未知时 skipped；浅色/未知 Shell 的任务栏颜色 unsupported，自动取色可能覆盖固定 Accent，报告 partial |
+| `terminal` | defaults、所有 Profile、已有 unfocusedAppearance；两套 Scheme/ANSI、光标、选择背景、Tab/Tab Row/window 和可选 pwsh/PSReadLine 预测 | 按 Preview 冻结的版本应用实心和原生跟随；保留字体、padding、字形、光标形状、Tab 偏好、rainbowFrame 和未知键；未知能力保留并 partial；配置回读不证明渲染阈值 |
+| `vscode` | 完整固定公开颜色清单与实际 Workbench 注册字段交集；菜单、通知、Quick Input、Widget、Diff、Chat、Merge、Notebook、Debug、Testing、ANSI 与语义/语法高亮 | 已核查 Workbench 1.140.0/1.107.1；未知版本安全 skipped。使用精确贡献标签和原生 autoDetect；保留字体、光标形状、终端渲染和高对比度偏好 |
+| `trae` | 实际 Workbench 版本对应的同一公开清单；公开 Git decoration 等 | 产品版本不替代 Workbench 注册基线；私有 AI 字段 unsupported，不猜测替代键。配置和扩展使用 Plan 的实例路径 |
+| `chatgpt-app` | 已验证 config.toml v1 两个 Light/Dark 主题表及 appearanceTheme | appearanceTheme=system，contrast=100、opaqueWindows=true；完整 semanticColors；补齐缺失 fonts table，不发明字体值；未知布局安全 skipped。UI 字号、sidebar 透明度和内嵌终端无已验证入口，unsupported；手动重启 |
+| `chrome` | 两个 canonical unpacked Light/Dark Manifest V3 主题，24 colors、6 tints 和适用 properties | ZIP 为内部产物，用户在 chrome://extensions 手动加载并确认。没有 NTP 图片时省略 alignment/repeat；只写 ntp_logo_alternate。不支持 theme 字体/全窗口透明度，内容字体保持原值 |
 
-Windows 10 支持 build `>= 19045`；Windows 11 支持 build `>= 22621`。
+默认全部六个目标；显式 cursor 安全 skipped，不访问 Cursor 文件。Seed Color 必须显式输入；示例为 `#22C55E`，没有默认 Seed。
 
-目标结果使用 `ok`、`partial`、`failed` 或 `skipped`，至少包含 `target`、`status`、`changed`、`verified` 和 `message`。Palette 的 `background_foreground` 对深层背景目标为 `>= 7:1`；Light Mode 的 Dense primary text 对实际 `surface` 目标为 `>= 7:1`，其他普通/强调文字对实际 `surface` 目标为 `>= 4.5:1`（理论最大值不足时取最大可得值）；Accent 和选区背景上的文字也使用 `>= 4.5:1`。Dense primary text 必须使用不透明、低色度的 Neutral primary text 角色，不得复用 `muted_foreground`、透明色或状态色；后者只用于 inactive、placeholder、description 和语义状态。Seed 本身不因对比度计算被暗化。所有语义文字字段必须使用对比度安全的 `*_text` 变体，不能直接复用视觉强调色。
+## 字段和版本证据
 
-`partial` 表示至少一个目标完成但存在失败、跳过或用户操作；若没有目标完成，或补偿回滚失败，则为 `failed`。目标名、Plan ID 和 Transaction ID 不得包含路径分隔符或 `..`。VS Code/TRAE 的路径可通过 `ONE_TONE_<TARGET>_EXECUTABLE`、`ONE_TONE_<TARGET>_SETTINGS`、`ONE_TONE_<TARGET>_EXTENSIONS` 覆盖；Windows Terminal 的 Store/Scoop 用户配置和 ChatGPT App 的 `config.toml` 配置也会自动探测。旧 `codex` Target 的 Plan 不兼容。Skill 不要求 Everything，不使用固定盘符或开发机临时路径。
+Field inventory `2026-10-05.v4` 与生成器共享显式字段映射，区分 color、font、display_property 和 theme_structure；逐项显示处理策略、来源、版本、适用条件、实际 capability 和生成值。能力为 supported、unsupported、not-applicable、applied、verified 或 failed。保留字体不等于生成字体值；App fonts 的空表修复属于结构修复。
 
-## 主题字段开发基线
+公开编辑器清单固定为 [vscode-docs commit 8889b05](https://github.com/microsoft/vscode-docs/blob/8889b0542cb2144fb53f5f53bd19c1395e2d9fa1/api/references/theme-color.md) 的 971 项。与 [1.107.1](https://github.com/microsoft/vscode/tree/1.107.1) / [1.140.0](https://github.com/microsoft/vscode/tree/1.140.0) 源码 registerColor、ANSI 和 contributes.colors 交集分别 901/962 项，排除 Windows 普通 Light/Dark 不适用的五项后生成 896/957 项。window.activeBorder/inactiveBorder 在 Windows 不适用；contrastBorder/contrastActiveBorder 和 editor.selectionForeground 仅高对比度适用。其余未注册项 unsupported；不写 panel.foreground。
 
-下表是下一阶段实现和测试必须维护的 Field inventory 范围。每个字段必须生成并 Verify，或按实际版本记录为 unsupported。
+普通正文保持不透明、低色度 Neutral primary text，在实际背景 >=7；其他功能/状态/语义文字 >=4.5。普通相邻区域目标 >=1.2，交互边界 >=3。35 项文档透明约束保留 alpha；查找文字按合成背景检查，Diff/Merge 叠层保留语义与区域区分。实心窗口策略不把叠层机械改为不透明。编辑器 ANSI black/white/brightBlack 保持不同角色。
 
-| Target | 公开字段范围 | 模式/产物要求 |
-| --- | --- | --- |
-| windows | 壁纸、Accent Palette（含 Quick Settings 活动卡片）、Accent color、Taskbar accent display、标题栏、窗口边框、DWM afterglow；模式选择、自动取色和高对比度只读 | 不强制模式；保持用户策略；所有 Accent Palette 槽位对白色图标至少 `4.5:1`；Light/Dark 都尝试 Taskbar accent display，并按实际系统能力报告 |
-| terminal | 完整 Scheme、ANSI、cursor、selection、Profile tabColor/adjustIndistinguishableColors、Tab/Tab Row、frame/unfocusedFrame、窗口主题，以及 PowerShell 7/PSReadLine `InlinePrediction`、`ListPrediction`、`ListPredictionSelected` | light/dark 双 Scheme，正文在 surface 两种 Mode 均 `7:1`，功能文字/选择 `4.5:1`；原生修正与 PSReadLine 按 Preview 版本能力支持或跳过；theme 保持 system |
-| vscode | 官方稳定 Workbench 颜色 ID：基础、编辑器、选择/光标、侧栏、Activity Bar、Tab、Panel、Input、List、Widget、Settings、Breadcrumb、通知、诊断、链接、语义和语法字段 | 一个安装包包含 Light/Dark 两套主题；设置使用扩展实际贡献的精确标签 |
-| trae | VS Code 标准字段、公开 Git decoration 字段，加上安装版本中可发现且可验证的 TRAE 专属字段 | 一个安装包包含 Light/Dark 两套主题；设置使用精确标签；专属字段可 partial |
-| chatgpt-app | 已验证 v1 两套主题表的 surface、ink、accent、contrast、opaqueWindows、fonts 和 semanticColors 字段 | 同一 Plan 同时更新 light/dark 表；补齐缺失 fonts table、强制实心窗口与最高对比度，并保留未知键和已有字体值 |
-| chrome | 完整公开 colors、tints、display_properties；包括 frame、toolbar、tabs、bookmark、NTP、omnibox、separator、button、incognito 等稳定字段 | 生成两个 canonical unpacked 目录；内部 ZIP 不作为额外用户选项，用户手动加载 |
+Chrome 的 [固定公开 parser](https://github.com/chromium/chromium/blob/77270bd36581caca2ab02fe4526cc921560ad089/chrome/browser/themes/browser_theme_pack.cc) 是字段证据；不输出 display_properties、无效 separator 字段或未知 theme 设置。Windows AccentPalette/Afterglow 属于核查过的注册表运行时机制，不能称为稳定公开 schema；高对比度读取 [SPI_GETHIGHCONTRAST](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)。ChatGPT App v1 是已验证运行时 schema，不是公开 API 承诺。
 
-相邻背景角色的目标为至少 1.2:1；边框、焦点、选区和强调控件相对邻近背景至少 3:1；Light Mode 的 Dense primary text 使用不透明 Neutral primary text 和 surface 7:1，其他文字使用 surface 4.5:1，deep background 文字使用 7:1。字段清单不得把私有、实验或不可验证字段伪装成完整支持。
+## Terminal 门槛和验收
 
-## 终端字段证据与验收边界
+| 字段 | 门槛 / 策略 |
+| --- | --- |
+| Scheme foreground / ANSI black | 同 Mode 的正文 / surface 配对 >=7；white/brightWhite 使用正文色，brightBlack 使用次要色 |
+| Scheme selectionBackground | 有公开支持；Scheme 不写 selectionForeground；Palette 的 selection_foreground 仅供 PSReadLine 选择等实际支持的入口 |
+| profile.colorScheme 对 / adjustIndistinguishableColors | >=1.16；后者 always。未知/旧版本使用单个 Scheme 并报告配对/原生修正 unsupported，不伪称完整跟随 |
+| profile.tabColor / useAcrylic / backgroundImage | 已核查版本移除固定 tabColor，useAcrylic=false，backgroundImage 空；未知版本保留并 unsupported |
+| profile.opacity | >=1.12 写 100，移除旧 acrylicOpacity；defaults、各 Profile、已有 unfocusedAppearance 一致 |
+| theme 对 / window.useMica | >=1.17；Mica 仅适用 Windows 11 >=22621；applicationTheme 保持 system；未知/旧版本 root theme 使用 system |
+| window.frame / unfocusedFrame | >=1.22 且 Windows 11 平台；旧/未知版本不新增字段，保留原有偏好并报告能力 |
+| PSReadLine InlinePrediction/ListPrediction/ListPredictionSelected | 仅验证为 PowerShell Core >=7 的 pwsh；没有 pwsh 不回退 Windows PowerShell；Profile 与公开字段由 Preview 发现，受管块仅 WT_SESSION 生效 |
 
-Field inventory `2026-10-05.v3` 继续由共享映射生成；下表解释公开字段的实际用途。
+门槛对照 [v1.25.2733.0 schema](https://github.com/microsoft/terminal/blob/v1.25.2733.0/doc/cascadia/profiles.schema.json) 及 1.16/1.17/1.22 固定 schema；[原生修正](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance#adjust-indistinguishable-colors) 不保证任意程序组合达到本工具阈值。
 
-| 字段/输出 | 映射或能力 | 实际背景/状态及证据 |
-| --- | --- | --- |
-| Scheme foreground | foreground | 两种 Mode 对 surface `>= 7:1`；[微软 Scheme 文档](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/color-schemes) |
-| ANSI black | surface | 代表性默认正文和 ANSI white 对 black 背景达标；black 作为前景时可能需要宿主修正，一张色表不保证所有组合 |
-| ANSI white / brightWhite | foreground | 对 ANSI black 背景 `>= 4.5:1`，反色配对同样可读；槽位随 Mode 适配，不强求字面黑白 |
-| ANSI brightBlack | muted_foreground | 对 surface `>= 4.5:1`；作为背景或经 dim 渲染后另行验收 |
-| selectionForeground / selectionBackground | selection 对 | 配对 `>= 4.5:1`；实际选中的 ANSI/RGB/弱化文字仍需视觉复核 |
-| profile.adjustIndistinguishableColors | display_property / always | [微软原生修正文档](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance#adjust-indistinguishable-colors)；[1.16 发布基线](https://github.com/microsoft/terminal/discussions/13977)；能力由 Preview 的本机版本资源发现，不代表全部 `7:1`/`4.5:1` |
-| PSReadLine 预测颜色 | prediction_foreground / selection 对 | 仅 PowerShell Core `>= 7`，公开字段与 Profile 在 Preview 发现；Windows PowerShell 不参与选择 |
-| ChatGPT App 内嵌 xterm | unsupported 配置子能力 | 已检查 App 26.930.4958.0 的独立 CSS token 与 xterm 主题装配；没有已验证的完整 ANSI/minimumContrastRatio 用户配置入口，保留未知结构 |
-| ANSI256 / RGB / dim / reverse / SSH | 独立渲染验收 | `python .\scripts\terminal_readability_sample.py` 覆盖代表性输出；报告 `rendering_verification = untested`，配置 Verify 不自动转为视觉通过，远端配置保持不变 |
+## 流程和限制
+
+Preview 只保存 Plan；字段能力、两套 Palette、实例和 Appearance policy 进入 Hash。旧 Plan 或变化的字段契约要求重新 Preview，Apply 在创建事务和 Snapshot 前拒绝；历史事务 Rollback 独立工作。Apply 对每个目标 Snapshot 并逐操作持久化，失败仅补偿该目标；至少一个成功且存在限制/失败/跳过时 partial，无成功或补偿失败时 failed。
+
+Verify 只读，校验两套完整主题、注册贡献路径/类型/标签、settings、Chrome unpacked/ZIP、完整 TOML 和受管 Windows/Terminal 配置。不创建事务、不 Snapshot、不 Apply、不重启或回滚。Rollback 仅接受准确 transaction ID，恢复该事务的快照或工具产物并验证，包含原先缺失的字段。
+
+Target、Plan ID、Transaction ID 必须是安全路径组件。ONE_TONE_<TARGET>_EXECUTABLE/SETTINGS/EXTENSIONS 可明确覆盖编辑器实例；Preview 解析普通/portable/启动器实例并冻结 Workbench 基线，Apply/Verify 不重新猜路径。运行时不要求 Everything、仓库根目录、开发机绝对路径或固定盘符。
+
+配置 verified 与 rendering acceptance 分开。真实桌面/私有 AI/内嵌 xterm/应用自带背景/dim/reverse/ANSI256/RGB/真实 SSH 尚未验收；报告 rendering_verification=untested。诊断入口 `python .\scripts\terminal_readability_sample.py` 只输出代表性 ANSI 样例；可以经 stdin 送入已授权 SSH，不写远端配置。内嵌终端完整 ANSI/minimumContrastRatio 无已验证用户入口，不修改 App bundle。

@@ -2,6 +2,8 @@
 
 Date: 2026-10-05. Configuration implementation is available; complete rendering acceptance is pending. Fixture and numerical passes below do not establish the final rendered colors in either host.
 
+This is the earlier terminal-task record, including its historical 168-test result and SSH transport observation. The subsequent [official-field implementation evidence](theme-field-coverage-evidence.md) updates the current policy and validation scope; no new desktop Apply or SSH run was performed. Scheme selectionForeground has been removed because the pinned parser does not support it. Selection ratios below describe the Palette/PSReadLine selection pair, not a Scheme foreground capability.
+
 ## Sources and installed capabilities
 
 - Windows Terminal executable version resource: `1.25.2609.30003`. Preview discovers support for `adjustIndistinguishableColors = always`; [Microsoft's appearance documentation](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance#adjust-indistinguishable-colors) defines the field and [the 1.16 release announcement](https://github.com/microsoft/terminal/discussions/13977) establishes the enum baseline. Neither source guarantees this spec's full contrast thresholds.

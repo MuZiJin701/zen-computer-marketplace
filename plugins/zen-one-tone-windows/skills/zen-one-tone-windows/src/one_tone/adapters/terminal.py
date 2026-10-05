@@ -5,12 +5,13 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from ..palette import contrast_ratio, parse_hex_color
 from ..plan import Plan
-from ..field_mappings import terminal_palette_key, terminal_scheme_colors
+from ..field_mappings import TERMINAL_APPEARANCE_FIELDS, terminal_capabilities, terminal_palette_key, terminal_scheme_colors
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
 
@@ -177,10 +178,10 @@ def _scheme_colors(plan: Plan, mode: str | None = None) -> dict[str, str]:
     return {"name": name, "cursorColor": palette["accent_text"], **colors}
 
 
-def _theme_colors(plan: Plan, mode: str | None = None) -> dict[str, Any]:
+def _theme_colors(plan: Plan, mode: str | None = None, capabilities: Mapping[str, str] | None = None) -> dict[str, Any]:
     palette = plan.palette_for(mode or plan.mode)
     name = _THEME_NAME if mode is None else f"{_THEME_NAME} {mode.title()}"
-    return {
+    theme = {
         "name": name,
         "window": {
             "applicationTheme": "system",
@@ -196,6 +197,13 @@ def _theme_colors(plan: Plan, mode: str | None = None) -> dict[str, Any]:
             "unfocusedBackground": palette[terminal_palette_key("tab.unfocusedBackground")],
         },
     }
+    capabilities = capabilities or terminal_capabilities(plan.target_instances.get("terminal", {}))
+    for field in ("window.frame", "window.unfocusedFrame"):
+        if capabilities.get(field) != "supported":
+            theme["window"].pop(field.split(".")[1], None)
+    if capabilities.get("window.useMica") == "supported":
+        theme["window"]["useMica"] = False
+    return theme
 
 
 def _generated_values(plan: Plan) -> dict[str, Any]:
@@ -208,8 +216,9 @@ def _generated_values(plan: Plan) -> dict[str, Any]:
     values = {
         **_scheme_colors(plan),
         "profile.colorScheme": dict(_SCHEME_MAPPING),
-        "profile.tabColor": palette[terminal_palette_key("profile.tabColor")],
-        "theme.applicationTheme": theme["window"]["applicationTheme"],
+        **{name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items()
+           if name not in {"window.frame", "window.unfocusedFrame"}},
+        "window.applicationTheme": theme["window"]["applicationTheme"],
         **{f"window.{key}": value for key, value in theme["window"].items() if key != "applicationTheme"},
         **{f"tabRow.{key}": value for key, value in theme["tabRow"].items()},
         **{f"tab.{key}": value for key, value in theme["tab"].items()},
@@ -237,6 +246,9 @@ class TerminalAdapter:
         self._target_instance = dict(target_instance or {})
         self._terminal_executable = terminal_executable
         self._native_info = dict(self._target_instance.get("native_correction", {}))
+        self._windows_build = self._target_instance.get("windows_build") if self._target_instance else (
+            sys.getwindowsversion().build if hasattr(sys, "getwindowsversion") else None
+        )
         self._powershell_executable = powershell_executable
         self._command_runner = command_runner or subprocess.run
         self._discover_shell_enabled = discover_shell or command_runner is not None or bool(target_instance)
@@ -346,6 +358,7 @@ class TerminalAdapter:
         self._discover_native_correction()
         instance: dict[str, Any] = {"status": "ok", "settings_path": str(self.settings_path)}
         instance["native_correction"] = dict(self._native_info)
+        instance["windows_build"] = self._windows_build
         if self._powershell_executable is not None:
             instance["powershell_executable"] = str(self._powershell_executable)
         if self._profile_path is not None:
@@ -354,12 +367,18 @@ class TerminalAdapter:
             instance["psreadline"] = dict(self._shell_info)
         return instance
 
+    def _appearance_capabilities(self) -> dict[str, str]:
+        self._discover_native_correction()
+        return terminal_capabilities({"native_correction": self._native_info, "windows_build": self._windows_build})
+
     def _shell_capabilities(self, status: str) -> dict[str, str]:
         return {field: status for field in _PSREADLINE_FIELDS}
 
-    def _metadata(self, status: str = "supported", plan: Plan | None = None, native_status: str | None = None) -> dict[str, Any]:
+    def _metadata(self, status: str = "supported", plan: Plan | None = None, native_status: str | None = None, stage: str = "supported") -> dict[str, Any]:
         self._discover_native_correction()
         capabilities = field_capabilities(self.target, statuses={
+            **{name: stage if capability == "supported" else capability for name, capability in field_capabilities(self.target).items()},
+            **{name: stage if capability == "supported" else capability for name, capability in self._appearance_capabilities().items()},
             **self._shell_capabilities(status),
             _NATIVE_FIELD: native_status or self._native_info["status"],
         })
@@ -375,7 +394,8 @@ class TerminalAdapter:
             ],
         }
         if plan is not None:
-            metadata["generated_values"] = _generated_values(plan)
+            metadata["generated_values"] = {name: value for name, value in _generated_values(plan).items()
+                                            if capabilities.get(name) not in {"unsupported", "not-applicable"}}
             if self._native_info["status"] == "supported":
                 metadata["generated_values"][_NATIVE_FIELD] = "always"
         return metadata
@@ -484,41 +504,60 @@ class TerminalAdapter:
             self._discover_native_correction()
             profile_color_keys = (*_palette_colors(plan), "cursorColor")
             settings["profiles"].setdefault("defaults", {})
+            appearance_capabilities = self._appearance_capabilities()
+            profile_scheme = dict(_SCHEME_MAPPING) if appearance_capabilities["profile.colorScheme"] == "supported" else _SCHEME_MAPPING[plan.mode]
             for profile in _profile_appearances(settings):
                 if not isinstance(profile, dict):
                     continue
                 for key in profile_color_keys:
                     profile.pop(key, None)
-                profile["colorScheme"] = dict(_SCHEME_MAPPING)
-                profile["tabColor"] = plan.palette_for(plan.mode)[terminal_palette_key("profile.tabColor")]
+                profile["colorScheme"] = profile_scheme
+                if appearance_capabilities["profile.tabColor"] == "supported":
+                    profile.pop("tabColor", None)
+                profile.pop("selectionForeground", None)
+                if appearance_capabilities["profile.useAcrylic"] == "supported":
+                    profile["useAcrylic"] = False
+                if appearance_capabilities["profile.backgroundImage"] == "supported":
+                    profile["backgroundImage"] = ""
+                if appearance_capabilities["profile.opacity"] == "supported":
+                    profile["opacity"] = 100
+                    profile.pop("acrylicOpacity", None)
                 if self._native_info["status"] == "supported":
                     profile["adjustIndistinguishableColors"] = "always"
-            settings["profiles"].setdefault("defaults", {})["colorScheme"] = dict(_SCHEME_MAPPING)
             schemes = [item for item in settings.get("schemes", []) if item.get("name") != _SCHEME_NAME]
             schemes = [item for item in schemes if not str(item.get("name", "")).startswith(f"{_SCHEME_NAME} ")]
             schemes.extend(_scheme_colors(plan, mode) for mode in ("light", "dark"))
-            schemes.append(_scheme_colors(plan))
             settings["schemes"] = schemes
             themes = [item for item in settings.get("themes", []) if isinstance(item, dict) and item.get("name") != _THEME_NAME]
             themes = [item for item in themes if not str(item.get("name", "")).startswith(f"{_THEME_NAME} ")]
-            themes.extend(_theme_colors(plan, mode) for mode in ("light", "dark"))
-            themes.append(_theme_colors(plan))
+            previous_themes = {item.get("name"): item for item in settings.get("themes", []) if isinstance(item, dict)}
+            for mode in ("light", "dark"):
+                theme = _theme_colors(plan, mode, appearance_capabilities)
+                active_name = settings.get("theme")
+                if isinstance(active_name, dict):
+                    active_name = active_name.get(mode)
+                previous = previous_themes.get(theme["name"], previous_themes.get(_THEME_NAME, previous_themes.get(active_name, {})))
+                for section in ("window", "tab", "tabRow"):
+                    theme[section] = {**previous.get(section, {}), **theme.get(section, {})}
+                theme = {**previous, **theme}
+                themes.append(theme)
             settings["themes"] = themes
-            settings["theme"] = _THEME_NAME
+            settings["theme"] = dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system"
             atomic_write_text(
                 self.settings_path,
                 json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
             )
             self._discover_shell()
             shell_status, shell_message = self._apply_profile(plan)
-            overall_status = "partial" if shell_status in {"unsupported", "failed"} or self._native_info["status"] != "supported" else "ok"
+            limited = "unsupported" in appearance_capabilities.values()
+            overall_status = "partial" if shell_status in {"unsupported", "failed"} or self._native_info["status"] != "supported" or limited else "ok"
             if shell_status == "failed":
                 overall_status = "failed"
             shell_capability = "applied" if shell_status == "applied" else shell_status
             return AdapterResult(
                 self.target, overall_status, True, False,
                 f"Terminal Profile updated; {self._resolution_message}; {shell_message}; native correction {self._native_info['status']}; rendering untested",
-                overall_status == "partial", metadata=self._metadata(shell_capability, plan, "applied" if self._native_info["status"] == "supported" else None),
+                overall_status == "partial", metadata=self._metadata(shell_capability, plan, "applied" if self._native_info["status"] == "supported" else None, stage="applied"),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Terminal apply failed: {error}")
@@ -532,13 +571,12 @@ class TerminalAdapter:
             index, message = resolved
             expected = _palette_colors(plan)
             self._discover_native_correction()
+            appearance_capabilities = self._appearance_capabilities()
+            profile_scheme = dict(_SCHEME_MAPPING) if appearance_capabilities["profile.colorScheme"] == "supported" else _SCHEME_MAPPING[plan.mode]
             native_supported = self._native_info["status"] == "supported"
             native_verified = not native_supported or all(
                 profile.get("adjustIndistinguishableColors") == "always" for profile in _profile_appearances(settings)
             )
-            scheme = next((item for item in settings.get("schemes", []) if item.get("name") == _SCHEME_NAME), None)
-            scheme_expected = _scheme_colors(plan)
-            theme = next((item for item in settings.get("themes", []) if item.get("name") == _THEME_NAME), None)
             paired_schemes = {
                 item.get("name"): item
                 for item in settings.get("schemes", [])
@@ -552,30 +590,38 @@ class TerminalAdapter:
             verified = (
                 all(
                     isinstance(profile, dict)
-                    and profile.get("colorScheme") == _SCHEME_MAPPING
+                    and profile.get("colorScheme") == profile_scheme
                     and not any(key in profile for key in (*expected, "cursorColor"))
-                    and profile.get("tabColor") == plan.palette_for(plan.mode)[terminal_palette_key("profile.tabColor")]
+                    and "selectionForeground" not in profile
+                    and (appearance_capabilities["profile.tabColor"] != "supported" or "tabColor" not in profile)
+                    and (appearance_capabilities["profile.useAcrylic"] != "supported" or profile.get("useAcrylic") is False)
+                    and (appearance_capabilities["profile.backgroundImage"] != "supported" or profile.get("backgroundImage") == "")
+                    and (appearance_capabilities["profile.opacity"] != "supported" or profile.get("opacity") == 100)
+                    and (appearance_capabilities["profile.opacity"] != "supported" or "acrylicOpacity" not in profile)
                     for profile in _profile_appearances(settings)
                 )
                 and native_verified
-                and settings.get("profiles", {}).get("defaults", {}).get("colorScheme") == _SCHEME_MAPPING
-                and isinstance(scheme, dict)
-                and all(scheme.get(key) == value for key, value in scheme_expected.items())
-                and settings.get("theme") == _THEME_NAME
-                and theme == _theme_colors(plan)
+                and settings.get("profiles", {}).get("defaults", {}).get("colorScheme") == profile_scheme
+                and settings.get("theme") == (dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system")
                 and all(paired_schemes.get(f"One Tone {mode.title()}") == _scheme_colors(plan, mode) for mode in ("light", "dark"))
-                and all(paired_themes.get(f"One Tone {mode.title()}") == _theme_colors(plan, mode) for mode in ("light", "dark"))
+                and all(
+                    isinstance(paired_themes.get(f"One Tone {mode.title()}"), dict)
+                    and all(
+                        all(paired_themes[f"One Tone {mode.title()}"].get(section, {}).get(key) == value for key, value in values.items())
+                        for section, values in _theme_colors(plan, mode, appearance_capabilities).items() if isinstance(values, dict)
+                    ) for mode in ("light", "dark")
+                )
             )
             shell_status, shell_verified, shell_message = self._verify_profile(plan)
             shell_capability = "verified" if shell_status == "verified" and shell_verified else shell_status
             overall_verified = verified and (shell_status in {"not-applicable", "unsupported", "failed"} or shell_verified)
-            overall_status = "partial" if shell_status in {"unsupported", "failed"} or not native_supported else "ok"
-            if not overall_verified and shell_status not in {"unsupported", "failed"}:
+            overall_status = "partial" if shell_status in {"unsupported", "failed"} or not native_supported or "unsupported" in appearance_capabilities.values() else "ok"
+            if not overall_verified:
                 overall_status = "failed"
             return AdapterResult(
                 self.target, overall_status, False, overall_verified,
                 f"Terminal configuration verified; {message}; {shell_message}; native correction {self._native_info['status']}; rendering untested" if overall_verified else "Terminal Profile colors do not match Plan; rendering untested",
-                overall_status == "partial", metadata=self._metadata(shell_capability, plan, ("verified" if native_verified else "failed") if native_supported else None),
+                overall_status == "partial", metadata=self._metadata(shell_capability, plan, ("verified" if native_verified else "failed") if native_supported else None, stage="verified" if overall_verified else "failed"),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Terminal verify failed: {error}")

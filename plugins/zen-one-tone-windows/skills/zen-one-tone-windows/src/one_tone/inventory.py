@@ -2,56 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from .field_mappings import field_mappings_for
+from .field_mappings import CHROME_COLOR_ROLES, CHROME_TINT_ROLES, TERMINAL_APPEARANCE_FIELDS, VSCODE_FIELD_DATA, field_mappings_for, terminal_capabilities, vscode_capabilities
 
 FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
     "windows": (
-        "wallpaper", "AccentPalette", "StartTaskbarColorPrevalence", "TitleBarColorPrevalence",
+        "EnableTransparency", "wallpaper", "AccentPalette", "StartTaskbarColorPrevalence", "TitleBarColorPrevalence",
         "AccentColorMenu", "StartColorMenu", "AccentColor", "ColorizationColor", "ColorizationAfterglow",
         "AppsUseLightTheme", "SystemUsesLightTheme", "AutoColorization", "highContrast",
     ),
-    "terminal": (
-        "background", "foreground", "selectionBackground", "selectionForeground", "cursorColor",
-        "black", "red", "green", "yellow", "blue", "purple", "cyan", "white", "brightBlack", "brightRed",
-        "brightGreen", "brightYellow", "brightBlue", "brightPurple", "brightCyan", "brightWhite",
-        "profile.colorScheme", "profile.tabColor", "theme.applicationTheme", "window.frame", "window.unfocusedFrame",
-        "InlinePrediction", "ListPrediction", "ListPredictionSelected",
-        "tabRow.background", "tabRow.unfocusedBackground", "tab.background", "tab.unfocusedBackground",
-    ),
-    "vscode": (
-        "foreground", "disabledForeground", "descriptionForeground", "icon.foreground", "editor.background", "editor.foreground",
-        "editor.selectionBackground", "editor.selectionForeground", "editorLineNumber.foreground", "editorLineNumber.activeForeground",
-        "editorCursor.foreground", "editorMultiCursor.primary.foreground", "editorMultiCursor.secondary.foreground",
-        "editor.placeholder.foreground", "editor.findMatchBackground", "editor.findMatchForeground", "editorError.foreground",
-        "editorWarning.foreground", "editorInfo.foreground", "editorHint.foreground", "editorGroupHeader.tabsBackground",
-        "editorGroupHeader.tabsBorder", "sideBar.background", "sideBar.foreground", "sideBar.border", "sideBarTitle.background",
-        "sideBarTitle.foreground", "sideBarTitle.border", "sideBarSectionHeader.background", "sideBarSectionHeader.foreground",
-        "sideBarSectionHeader.border", "activityBar.background", "activityBar.foreground", "activityBar.inactiveForeground",
-        "activityBar.activeBorder", "activityBar.border", "activityBarBadge.background", "activityBarBadge.foreground",
-        "activityBarTop.background", "activityBarTop.foreground", "activityBarTop.inactiveForeground", "activityBarTop.activeBorder",
-        "titleBar.activeBackground", "titleBar.activeForeground", "titleBar.inactiveBackground", "titleBar.inactiveForeground",
-        "titleBar.border", "tab.activeBackground", "tab.activeForeground", "tab.inactiveBackground", "tab.inactiveForeground",
-        "tab.activeBorderTop", "panel.background", "panel.foreground", "panel.border", "panelTitle.activeBorder",
-        "panelTitle.activeForeground", "panelTitle.inactiveForeground", "statusBar.background", "statusBar.foreground", "statusBar.border",
-        "input.background", "input.foreground", "input.border", "input.placeholderForeground", "dropdown.background", "dropdown.foreground",
-        "list.activeSelectionBackground", "list.activeSelectionForeground", "list.inactiveSelectionBackground", "list.inactiveSelectionForeground",
-        "list.focusBackground", "list.focusForeground",
-        "list.highlightForeground", "list.focusHighlightForeground", "list.hoverBackground", "badge.background", "badge.foreground",
-        "terminal.background", "terminal.foreground", "terminalCursor.foreground", "terminal.ansiBlack", "terminal.ansiRed",
-        "terminal.ansiGreen", "terminal.ansiYellow", "terminal.ansiBlue", "terminal.ansiMagenta", "terminal.ansiCyan", "terminal.ansiWhite",
-        "terminal.ansiBrightBlack", "terminal.ansiBrightRed", "terminal.ansiBrightGreen", "terminal.ansiBrightYellow", "terminal.ansiBrightBlue",
-        "terminal.ansiBrightMagenta", "terminal.ansiBrightCyan", "terminal.ansiBrightWhite", "textLink.foreground", "textLink.activeForeground",
-        "errorForeground", "notifications.foreground", "notificationCenterHeader.foreground", "focusBorder", "button.background", "button.foreground",
-        "editorWidget.background", "editorWidget.border", "settings.headerForeground", "settings.modifiedItemIndicator", "breadcrumb.background",
-        "breadcrumb.foreground", "breadcrumb.focusForeground",
-        "gitDecoration.addedResourceForeground", "gitDecoration.modifiedResourceForeground",
-        "gitDecoration.deletedResourceForeground", "gitDecoration.untrackedResourceForeground",
-        "gitDecoration.conflictingResourceForeground", "gitDecoration.ignoredResourceForeground",
-        "gitDecoration.renamedResourceForeground", "gitDecoration.stageModifiedResourceForeground",
-        "gitDecoration.stageDeletedResourceForeground", "gitDecoration.submoduleResourceForeground",
-    ),
-    "trae": (),
     "chatgpt-app": (
+        "appearanceTheme",
         "appearanceLightChromeTheme.surface", "appearanceLightChromeTheme.ink", "appearanceLightChromeTheme.accent",
         "appearanceLightChromeTheme.contrast", "appearanceLightChromeTheme.opaqueWindows", "appearanceLightChromeTheme.fonts",
         "appearanceLightChromeTheme.semanticColors.diffAdded",
@@ -61,48 +21,59 @@ FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
         "appearanceDarkChromeTheme.semanticColors.diffAdded",
         "appearanceDarkChromeTheme.semanticColors.diffRemoved", "appearanceDarkChromeTheme.semanticColors.skill",
     ),
-    "chrome": (
-        "frame", "frame_inactive", "toolbar", "toolbar_text", "toolbar_button_icon", "tab_background_text",
-        "tab_background_text_inactive", "tab_text", "bookmark_text", "ntp_background", "ntp_header", "ntp_link", "ntp_text",
-        "omnibox_background", "omnibox_text", "omnibox_background_tint", "omnibox_background_tab_switcher", "incognito_tab",
-        "incognito_background", "button_background", "button_background_hover", "separator", "tints.buttons", "tints.frame", "tints.background_tab", "display_properties.control_style",
-        "display_properties.theme_supports_hidpi",
-    ),
+    "chrome": (*CHROME_COLOR_ROLES, *(f"tints.{field}" for field in CHROME_TINT_ROLES),
+               "properties.ntp_background_alignment", "properties.ntp_background_repeat", "properties.ntp_logo_alternate"),
 }
 
-FIELD_INVENTORY["trae"] = FIELD_INVENTORY["vscode"]
 for _target in ("terminal", "vscode", "trae"):
     FIELD_INVENTORY[_target] = tuple(mapping.field for mapping in field_mappings_for(_target))
+
+PRESERVED_FIELDS = {
+    "windows": ("AppsUseLightTheme", "SystemUsesLightTheme", "AutoColorization", "highContrast", "system.fonts"),
+    "terminal": tuple(f"profile.font.{name}" for name in ("face", "size", "weight", "features", "axes", "cellWidth", "cellHeight")) +
+                tuple(f"profile.{name}" for name in ("padding", "antialiasingMode", "intenseTextStyle", "cursorShape", "cursorHeight")) +
+                ("tab.showCloseButton", "tab.iconStyle", "window.experimental.rainbowFrame"),
+    "vscode": ("editor.fontFamily", "editor.fontSize", "editor.fontWeight", "editor.fontLigatures", "editor.fontVariations", "editor.cursorStyle",
+               "terminal.integrated.fontFamily", "terminal.integrated.fontSize", "terminal.integrated.fontWeight", "terminal.integrated.fontWeightBold",
+               "terminal.integrated.customGlyphs", "terminal.integrated.minimumContrastRatio", "window.autoDetectHighContrast",
+               "workbench.preferredHighContrastColorTheme", "workbench.preferredHighContrastLightColorTheme"),
+    "chrome": ("content.fonts", "window.opacity"),
+    "chatgpt-app": ("ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio"),
+}
+PRESERVED_FIELDS["trae"] = (*PRESERVED_FIELDS["vscode"], "private.aiPanel.colors")
+FIELD_INVENTORY["terminal"] = tuple(dict.fromkeys((*FIELD_INVENTORY["terminal"], *TERMINAL_APPEARANCE_FIELDS)))
+for _target, _fields in PRESERVED_FIELDS.items():
+    FIELD_INVENTORY[_target] = tuple(dict.fromkeys((*FIELD_INVENTORY[_target], *_fields)))
 
 
 _SOURCES = {
     "windows": "https://learn.microsoft.com/en-us/windows/apps/develop/settings/settings-common",
-    "terminal": "https://learn.microsoft.com/en-us/windows/terminal/customize-settings/color-schemes",
-    "vscode": "https://code.visualstudio.com/api/references/theme-color",
-    "trae": "https://code.visualstudio.com/api/references/theme-color",
+    "terminal": "https://github.com/microsoft/terminal/blob/v1.25.2733.0/doc/cascadia/profiles.schema.json",
+    "vscode": VSCODE_FIELD_DATA["source"],
+    "trae": VSCODE_FIELD_DATA["source"],
     "chatgpt-app": "verified-v1-runtime-schema",
-    "chrome": "https://developer.chrome.com/docs/extensions/develop/ui/themes",
+    "chrome": "https://github.com/chromium/chromium/blob/77270bd36581caca2ab02fe4526cc921560ad089/chrome/browser/themes/browser_theme_pack.cc",
 }
 _BASELINES = {
     "windows": "Windows 10 22H2 / Windows 11 22H2",
     "terminal": "Windows Terminal documented profile schema",
-    "vscode": "VS Code theme color reference",
-    "trae": "installed public Workbench-compatible schema",
+    "vscode": "VS Code 1.140.0 registered colors and pinned public documentation",
+    "trae": "Workbench 1.107.1 / 1.140.0 registrations intersected with pinned public documentation",
     "chatgpt-app": "verified ChatGPT App v1 color schema",
     "chrome": "Chrome Manifest V3 theme schema",
 }
-_INVENTORY_VERSION = "2026-10-05.v3"
+_INVENTORY_VERSION = "2026-10-05.v4"
 
 _REFERENCE_THEMES = {
     "windows": "Windows user-visible color settings",
     "terminal": "Windows Terminal built-in Light scheme",
-    "vscode": "VS Code Light Modern 1.131.0",
-    "trae": "TRAE Light Modern 2.3.61406",
+    "vscode": "VS Code Light Modern 1.140.0",
+    "trae": "TRAE Workbench 1.107.1; installed version discovered in Preview",
     "chatgpt-app": "ChatGPT App verified v1 Light theme table",
     "chrome": "Chrome Manifest V3 Light theme",
 }
 _EVIDENCE_SOURCES = {
-    "windows": "official schema",
+    "windows": "verified registry mechanism; high contrast uses official SPI_GETHIGHCONTRAST",
     "terminal": "official schema plus built-in Light scheme",
     "vscode": "installed built-in Light theme plus official schema",
     "trae": "installed built-in Light theme plus official schema",
@@ -220,9 +191,18 @@ def _field_role(name: str) -> str:
 def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
     """Return the evidence-backed, user-readable Field inventory for a Target."""
     mappings = {mapping.field: mapping for mapping in field_mappings_for(target)}
+    baseline = "1.107.1" if target == "trae" else "1.140.0"
+    color_statuses = vscode_capabilities(baseline) if target in {"vscode", "trae"} else {}
     entries = []
     for name in inventory_for(target):
         mapping = mappings.get(name)
+        preserved = name in PRESERVED_FIELDS.get(target, ())
+        capability = (
+            "unsupported" if name in {"window.opacity", "ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio", "private.aiPanel.colors"}
+            else "not-applicable" if preserved or name in {"properties.ntp_background_alignment", "properties.ntp_background_repeat"}
+            else color_statuses.get(name, "unsupported") if target in {"vscode", "trae"}
+            else "supported"
+        )
         text_class = mapping.text_class if mapping else _text_class(name)
         entries.append(
             {
@@ -230,7 +210,8 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "label": _field_label(name),
                 "field_category": (
                     "theme_structure" if name.endswith(".fonts")
-                    else "display_property" if any(token in name.casefold() for token in ("display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
+                    else "font" if "font" in name.casefold()
+                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "appearanceTheme"} or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
                     else "color"
                 ),
                 "visual_role": mapping.visual_role if mapping else _field_role(name),
@@ -239,7 +220,10 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "official_source": "https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance#adjust-indistinguishable-colors" if name == "profile.adjustIndistinguishableColors" else _SOURCES.get(target, "unknown"),
                 "version_baseline": "Windows Terminal >= 1.16; executable version discovered during Preview" if name == "profile.adjustIndistinguishableColors" else _BASELINES.get(target, "verified runtime schema"),
                 "inventory_version": _INVENTORY_VERSION,
-                "capability_status": "supported",
+                "capability_status": capability,
+                "handling_policy": "preserve" if preserved else "preserve-or-repair-empty-table" if name.endswith(".fonts") else "remove-override" if name == "profile.tabColor" else "manage",
+                "applicability": mapping.condition if mapping else "No NTP background image" if name in {"properties.ntp_background_alignment", "properties.ntp_background_repeat"} else "verified Target schema",
+                "registered_baselines": ",".join(mapping.registered_baselines) if mapping else "",
                 "text_class": text_class,
                 "paired_background_role": mapping.paired_background_role if mapping else _paired_background_role(name, text_class),
                 "opacity_policy": mapping.opacity_policy if mapping else _opacity_policy(text_class),
@@ -283,12 +267,21 @@ def inventory_for(target: str) -> tuple[str, ...]:
     return FIELD_INVENTORY.get(target, ())
 
 
-def expected_capabilities(targets: tuple[str, ...]) -> dict[str, dict[str, str]]:
-    windows_read_only = {"AppsUseLightTheme", "SystemUsesLightTheme", "AutoColorization", "highContrast"}
-    return {
-        target: {
-            field: "unsupported" if target == "windows" and field in windows_read_only else "supported"
-            for field in inventory_for(target)
-        }
-        for target in targets
-    }
+def expected_capabilities(targets: tuple[str, ...], target_instances=None) -> dict[str, dict[str, str]]:
+    result = {target: {entry["technical_field"]: entry["capability_status"] for entry in field_inventory_for(target)} for target in targets}
+    for target in targets:
+        instance = (target_instances or {}).get(target, {})
+        if target in {"vscode", "trae"}:
+            result[target].update(vscode_capabilities(instance.get("color_baseline", "")))
+        elif target == "terminal":
+            result[target].update(terminal_capabilities(instance))
+            result[target].update({name: instance.get("psreadline", {}).get("status", "unsupported") for name in ("InlinePrediction", "ListPrediction", "ListPredictionSelected")})
+            result[target]["profile.adjustIndistinguishableColors"] = instance.get("native_correction", {}).get("status", "unsupported")
+        elif target == "windows":
+            if instance.get("high_contrast") is not False:
+                result[target].update({name: "unsupported" for name, status in result[target].items() if status == "supported"})
+            elif instance.get("shell_mode") != "dark":
+                result[target]["StartTaskbarColorPrevalence"] = "unsupported"
+        if instance.get("status") == "skipped":
+            result[target].update({name: "unsupported" for name, status in result[target].items() if status == "supported"})
+    return result

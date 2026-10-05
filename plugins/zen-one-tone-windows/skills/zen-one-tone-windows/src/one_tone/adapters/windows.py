@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import ctypes
+from ctypes import wintypes
 import json
 import struct
 import zlib
@@ -27,6 +28,7 @@ DESKTOP_KEY = r"Control Panel\Desktop"
 EXPLORER_ACCENT_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent"
 DWM_KEY = r"Software\Microsoft\Windows\DWM"
 THEME_VALUES = (
+    "EnableTransparency",
     "AutoColorization",
     "AppsUseLightTheme",
     "SystemUsesLightTheme",
@@ -40,6 +42,7 @@ THEME_VALUES = (
     "ColorizationAfterglow",
 )
 REGISTRY_PATHS = {
+    "EnableTransparency": PERSONALIZE_KEY,
     "AutoColorization": DESKTOP_KEY,
     "AppsUseLightTheme": PERSONALIZE_KEY,
     "SystemUsesLightTheme": PERSONALIZE_KEY,
@@ -71,6 +74,7 @@ class RegistryBackend(Protocol):
 
 
 class DesktopBackend(Protocol):
+    def get_high_contrast(self) -> bool | None: ...
     def get_wallpaper(self) -> str: ...
 
     def set_wallpaper(self, path: str) -> bool: ...
@@ -103,6 +107,9 @@ class InMemoryRegistryBackend:
 
 
 class InMemoryDesktopBackend:
+    def get_high_contrast(self) -> bool | None:
+        return False
+
     def __init__(self, wallpaper: str = "") -> None:
         self.wallpaper = wallpaper
 
@@ -169,6 +176,19 @@ class WindowsRegistryBackend:
 
 
 class WindowsDesktopBackend:
+    def get_high_contrast(self) -> bool | None:
+        if not hasattr(ctypes, "windll"):
+            return None
+
+        class HIGHCONTRASTW(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.UINT), ("dwFlags", wintypes.DWORD), ("lpszDefaultScheme", wintypes.LPWSTR)]
+
+        state = HIGHCONTRASTW()
+        state.cbSize = ctypes.sizeof(state)
+        if not ctypes.windll.user32.SystemParametersInfoW(0x0042, state.cbSize, ctypes.byref(state), 0):
+            return None
+        return bool(state.dwFlags & 0x00000001)
+
     def get_wallpaper(self) -> str:
         if winreg is None:
             raise OSError("Windows registry is only available on Windows")
@@ -297,6 +317,7 @@ def _theme_registry_values(plan: Plan) -> dict[str, int | bytes]:
     shell_accent = _shell_accent(palette["accent"])
     accent = windows_color_value(shell_accent)
     values = {
+        "EnableTransparency": 0,
         "TitleBarColorPrevalence": 1,
         "AccentColorMenu": accent,
         "StartColorMenu": accent,
@@ -309,16 +330,16 @@ def _theme_registry_values(plan: Plan) -> dict[str, int | bytes]:
     return values
 
 
-def _field_statuses(plan: Plan, status: str, auto_colorization: bool) -> dict[str, str]:
+def _field_statuses(plan: Plan, status: str, shell_mode: str) -> dict[str, str]:
     statuses = {name: status for name in _theme_registry_values(plan)}
     statuses["wallpaper"] = status
-    if plan.mode == "light":
-        statuses["StartTaskbarColorPrevalence"] = "partial"
+    if shell_mode != "dark":
+        statuses["StartTaskbarColorPrevalence"] = "unsupported"
     statuses.update({
-        "AppsUseLightTheme": "unsupported",
-        "SystemUsesLightTheme": "unsupported",
-        "AutoColorization": "unsupported",
-        "highContrast": "unsupported",
+        "AppsUseLightTheme": "not-applicable",
+        "SystemUsesLightTheme": "not-applicable",
+        "AutoColorization": "not-applicable",
+        "highContrast": "not-applicable",
     })
     return statuses
 
@@ -326,14 +347,16 @@ def _field_statuses(plan: Plan, status: str, auto_colorization: bool) -> dict[st
 def _field_metadata(
     plan: Plan,
     status: str,
-    auto_colorization: bool,
+    shell_mode: str,
     generated_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    statuses = _field_statuses(plan, status, auto_colorization)
+    statuses = _field_statuses(plan, status, shell_mode)
     return {
         "field_capabilities": statuses,
         "field_inventory": inventory_report("windows", statuses, generated_values),
-        "field_groups": inventory_groups("windows", statuses),
+        "field_groups": inventory_groups("windows", statuses, generated_values),
+        "shell_mode": shell_mode,
+        "rendering_verification": "untested",
     }
 
 
@@ -351,9 +374,17 @@ class WindowsAdapter:
         self.desktop = desktop or WindowsDesktopBackend()
         self._wallpaper_path: Path | None = None
         self._version: str | None = None
+        self._instance: dict[str, Any] = {"status": "skipped"}
+
+    def target_instance(self) -> dict[str, Any]:
+        return dict(self._instance)
 
     def _auto_colorization_active(self) -> bool:
         return bool(self.registry.get_value("AutoColorization", 0))
+
+    def _mode(self, name: str) -> str:
+        value = self.registry.get_value(name)
+        return "light" if value == 1 else "dark" if value == 0 else "unknown"
 
     def detect(self) -> AdapterResult:
         detected = detect_windows_version(self.registry)
@@ -361,14 +392,20 @@ class WindowsAdapter:
             return AdapterResult(self.target, "skipped", False, False, "Windows 10 22H2+ or Windows 11 22H2+ not detected")
         family, build = detected
         self._version = f"{family} build {build}"
-        system_mode_value = self.registry.get_value("AppsUseLightTheme")
-        system_mode = "light" if system_mode_value == 1 else "dark" if system_mode_value == 0 else "unknown"
+        high_contrast = self.desktop.get_high_contrast()
         metadata = {
-            "system_mode": system_mode,
+            "system_mode": self._mode("AppsUseLightTheme"),
+            "app_mode": self._mode("AppsUseLightTheme"),
+            "shell_mode": self._mode("SystemUsesLightTheme"),
             "selected_mode_is_independent": True,
             "automatic_accent_enabled": self._auto_colorization_active(),
-            "high_contrast": self.registry.get_value("highContrast"),
+            "high_contrast": high_contrast,
+            "high_contrast_evidence": "SystemParametersInfoW(SPI_GETHIGHCONTRAST)",
         }
+        self._instance = {"status": "ok" if high_contrast is False else "skipped", **metadata, "windows_build": build}
+        if high_contrast is not False:
+            return AdapterResult(self.target, "skipped", False, False,
+                                 "High contrast is active or could not be determined; system appearance preserved", metadata=metadata)
         if self._auto_colorization_active():
             return AdapterResult(
                 self.target,
@@ -402,6 +439,8 @@ class WindowsAdapter:
 
     def apply(self, plan: Plan) -> AdapterResult:
         try:
+            if self.desktop.get_high_contrast() is not False:
+                return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration preserved")
             self.config.wallpaper_dir.mkdir(parents=True, exist_ok=True)
             wallpaper_path = (self.config.wallpaper_dir / f"{plan.id}.png").resolve()
             self._wallpaper_path = generate_wallpaper(plan.palette_for(plan.mode), wallpaper_path)
@@ -414,13 +453,13 @@ class WindowsAdapter:
             metadata = _field_metadata(
                 plan,
                 "applied",
-                auto_colorization,
+                self._mode("SystemUsesLightTheme"),
                 {**_theme_registry_values(plan), "wallpaper": str(self._wallpaper_path)},
             )
-            if auto_colorization or plan.mode == "light":
+            if auto_colorization or self._mode("SystemUsesLightTheme") != "dark":
                 message = "theme colors and generated wallpaper applied"
-                if plan.mode == "light":
-                    message += "; Light-mode taskbar display requires native visual verification"
+                if self._mode("SystemUsesLightTheme") != "dark":
+                    message += "; actual Shell mode limits taskbar accent display; rendering untested"
                 if auto_colorization:
                     message += "; turn off Windows automatic accent color to keep the selected accent"
                 return AdapterResult(
@@ -441,6 +480,8 @@ class WindowsAdapter:
             return AdapterResult(self.target, "failed", False, False, f"Windows apply failed: {error}")
 
     def verify(self, plan: Plan) -> AdapterResult:
+        if self.desktop.get_high_contrast() is not False:
+            return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration rendering cannot be accepted")
         expected_path = self._wallpaper_path or (self.config.wallpaper_dir / f"{plan.id}.png").resolve()
         expected_registry = _theme_registry_values(plan)
         colors_ok = all(self.registry.get_value(name) == value for name, value in expected_registry.items())
@@ -450,13 +491,13 @@ class WindowsAdapter:
         metadata = _field_metadata(
             plan,
             "verified" if verified else "failed",
-            auto_colorization,
+            self._mode("SystemUsesLightTheme"),
             {**expected_registry, "wallpaper": str(expected_path)},
         )
-        if verified and (auto_colorization or plan.mode == "light"):
+        if verified and (auto_colorization or self._mode("SystemUsesLightTheme") != "dark"):
             message = "Windows theme and wallpaper verified"
-            if plan.mode == "light":
-                message += "; registry state verified; Light-mode taskbar display requires native visual verification"
+            if self._mode("SystemUsesLightTheme") != "dark":
+                message += "; actual Shell mode limits taskbar accent display; rendering untested"
             if auto_colorization:
                 message += "; automatic accent color is still enabled and may overwrite the accent later"
             return AdapterResult(
@@ -500,7 +541,7 @@ class WindowsAdapter:
                     self.registry.set_value("AutoColorization", auto_colorization)
             restored = all(
                 self.registry.get_value(name) == registry_values.get(name)
-                for name in THEME_VALUES
+                for name in registry_values
                 if name != "AutoColorization"
             )
             restored = restored and self.registry.get_value("AutoColorization") == auto_colorization

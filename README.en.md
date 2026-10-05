@@ -45,7 +45,7 @@ CC Switch users can add this repository in the Skills page, refresh and select t
 Tell your agent what you need. Every Skill previews its changes before execution confirmation.
 
 ```text
-Use $zen-one-tone-windows to unify my computer theme with emerald #10B981. Preview first.
+Use $zen-one-tone-windows to unify my computer theme with green #22C55E. Preview first.
 Use $zen-desktop-zero to preview desktop cleanup: delete shortcuts and classify other items under D:\data.
 Use $zen-scoop-toolchain to check Python, Git, uv and Node.js. Preview missing tools before installation.
 ```
@@ -56,13 +56,13 @@ The common theme workflow is Preview → confirmed Plan Apply → read-only Veri
 
 ## Theme scope
 
-- Seed Color is the Theme anchor/Accent source. ChatGPT App surfaces and Windows wallpaper use derived Tonal surfaces in the current runtime. The App preserves `appearanceTheme`, existing font values and unknown keys, repairs missing font tables, and uses opaque windows with maximum contrast.
-- Windows Terminal generates paired Light/Dark Schemes for all discovered Profiles, follows system appearance and supports optional PSReadLine prediction colors. Shell discovery chooses PowerShell 7 (`pwsh`), verifies Core >= 7 and never falls back to Windows PowerShell. It does not change the user's default Terminal Profile.
+- Seed Color remains the Theme anchor/Accent source; App surfaces and wallpaper use derived Tonal surfaces. Confirmed Apply disables Windows transparency and sets App `appearanceTheme = system`, opaque windows and maximum contrast. Existing font values and unknown keys are preserved; missing font tables are repaired.
+- Windows Terminal covers defaults, every Profile and existing unfocused appearances. Verified versions disable Acrylic/Mica, use full opacity, clear background images and remove fixed `tabColor`; supported versions use paired native Light/Dark Schemes and window themes. Unknown capabilities remain unchanged and report partial. Fonts and unrelated preferences are preserved. Shell discovery selects only PowerShell 7 (`pwsh`).
 - Terminal body text uses 7:1 on controlled backgrounds in both Modes; other functional text uses 4.5:1. ANSI black uses the tonal surface, white/brightWhite use primary text and brightBlack uses secondary text. Preview discovers executable versions; Windows Terminal >= 1.16 enables `adjustIndistinguishableColors = always` on defaults, every Profile and existing unfocused appearances, with configuration Verify and transaction rollback. Old/unknown versions preserve that setting and report partial.
 - The App embedded terminal has an independent xterm/CSS theme with no verified user entry for its complete ANSI table/native contrast correction. Configuration matching does not establish rendering acceptance for either host, application backgrounds, dim/reverse/selection, ANSI256, RGB or real SSH. Reports carry `rendering_verification = untested`.
-- VS Code/TRAE themes cover standard Workbench, Git decorations, selections/cursors, terminal ANSI, links, notifications and semantic highlighting, and enable native system appearance following. Private AI panels remain application-controlled.
+- VS Code/TRAE intersect the pinned public inventory with discovered Workbench registrations, including menus, notifications, Quick Input, widgets, Diff, Chat, Merge, Notebook, Debug and Testing. Verified baselines are `1.140.0` and `1.107.1`; unknown versions safely skip. Overlays retain alpha and use actual composited backgrounds for contrast. Private AI fields are unsupported.
 - Windows automatic Accent selection can override the fixed Accent; the tool reports that limitation without changing automatic selection or system appearance.
-- Chrome produces two canonical Manifest V3 unpacked Light/Dark theme directories; ZIP files are internal artifacts. Load and confirm the desired theme manually through `chrome://extensions`.
+- Chrome generates all 24 public colors, 6 tints and applicable properties in two canonical unpacked Light/Dark directories. ZIPs are internal artifacts; activation through `chrome://extensions` remains manual. Image alignment/repeat properties are omitted without an NTP image; browser fonts and window opacity remain unchanged.
 - `.one-tone` lives under the Skill runtime root regardless of the agent's current directory. Target paths are discovered from user directories, PATH, launcher inputs or environment variables, without fixed developer paths or Everything.
 
 ## Repository and development
@@ -75,10 +75,12 @@ Current terminal requirements are in the [readability spec](docs/specs/2026-10-0
 
 The [field-coverage spec](docs/specs/2026-07-25-theme-field-coverage-and-separation.md), [Shell/theme regression spec](docs/specs/2026-08-03-theme-regressions-and-portable-shell-integration.md) and [workstation spec](docs/specs/2026-07-26-zen-workstation-plugins.md) document the other accepted boundaries.
 
+The [development spec](docs/specs/2026-10-05-official-theme-coverage-and-slimming.md) is implemented with fixture regressions; [field evidence](docs/theme-field-coverage-evidence.md) records source baselines, capability limits and pending real UI acceptance. The external Issue status was not changed. The new appearance policy and field contract are hashed into Plans: recreate older Plans through Preview; historical Transactions remain independently restorable.
+
 ```powershell
 uv run pytest
 uv run --project plugins/zen-one-tone-windows/skills/zen-one-tone-windows one-tone --help
 git diff --check
 ```
 
-From the Skill directory, use `python .\scripts\run_one_tone.py preview '#10B981'`, then `apply plan-... --confirm`, `verify plan-...` and `rollback tx-...` with the actual confirmed IDs. Use PowerShell 7 (`pwsh`) for PowerShell commands. Real desktop/visual tests remain separate from the default fixture suite.
+From the Skill directory, use `python .\scripts\run_one_tone.py preview '#22C55E'`, then `apply plan-... --confirm`, `verify plan-...` and `rollback tx-...` with the actual confirmed IDs. Use PowerShell 7 (`pwsh`) for PowerShell commands. Real desktop/visual tests remain separate from the default fixture suite.

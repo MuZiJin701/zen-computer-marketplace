@@ -41,7 +41,7 @@ def test_field_inventory_keeps_evidence_and_visual_region_details():
     assert field["technical_field"]
     assert field["official_source"].startswith("https://")
     assert field["version_baseline"]
-    assert field["inventory_version"] == "2026-10-05.v3"
+    assert field["inventory_version"] == "2026-10-05.v4"
     assert field["capability_status"] == "supported"
 
 
@@ -51,9 +51,9 @@ def test_field_inventory_classifies_text_evidence_and_opacity_policy():
     fields = {entry["technical_field"]: entry for entry in field_inventory_for("vscode")}
 
     assert fields["editor.foreground"]["text_class"] == "dense-primary"
-    assert fields["editor.foreground"]["paired_background_role"] == "surface"
+    assert fields["editor.foreground"]["paired_background_role"].startswith("field:editor.background|")
     assert fields["editor.foreground"]["opacity_policy"] == "opaque"
-    assert fields["editor.foreground"]["reference_theme"] == "VS Code Light Modern 1.131.0"
+    assert fields["editor.foreground"]["reference_theme"] == "VS Code Light Modern 1.140.0"
 
     assert fields["editor.placeholder.foreground"]["text_class"] == "secondary"
     assert fields["editorError.foreground"]["text_class"] == "state"
@@ -67,7 +67,7 @@ def test_field_inventory_classifies_text_evidence_and_opacity_policy():
     ):
         assert fields[name]["visual_role"] == "selection"
         assert fields[name]["text_class"] == "state"
-        assert fields[name]["paired_background_role"] == "selection"
+        assert fields[name]["paired_background_role"] in {"selection", "selection_background", "field:" + name.replace("Foreground", "Background")}
 
 
 def test_field_inventory_keeps_git_and_prediction_text_semantic():

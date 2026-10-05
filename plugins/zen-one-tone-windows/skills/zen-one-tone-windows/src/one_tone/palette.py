@@ -268,6 +268,17 @@ def _readable_foreground(
     )
 
 
+def readable_text(color: str, background: str, minimum_ratio: float = 4.5) -> str:
+    """Keep the existing color when readable; reuse the Palette's text search otherwise."""
+    if contrast_ratio(color, background) >= minimum_ratio:
+        return color
+    result = (_readable_foreground((background,), minimum_ratio) if minimum_ratio >= 7
+              else _chromatic_foreground((background,), minimum_ratio, source_color=color))
+    if contrast_ratio(result, background) < minimum_ratio:
+        raise ValueError("No readable text color for the managed background")
+    return result
+
+
 def _prediction_hue(
     seed_color: str,
     semantic_colors: tuple[str, ...] = (),

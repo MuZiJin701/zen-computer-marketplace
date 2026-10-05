@@ -8,6 +8,43 @@ from one_tone.palette import contrast_ratio, parse_hex_color
 from one_tone.plan import create_plan
 
 
+def test_terminal_solid_policy_covers_unfocused_profiles_and_keeps_preferences(tmp_path):
+    path = tmp_path / "settings.json"
+    appearance = {"opacity": 30, "useAcrylic": True, "backgroundImage": "old.png", "tabColor": "#FF0000"}
+    preferences = {"font": {"face": "Custom", "size": 14, "features": {"liga": 0}}, "padding": "12", "cursorShape": "bar"}
+    original = json.dumps({"profiles": {"defaults": {**appearance, **preferences, "unfocusedAppearance": dict(appearance)},
+                                          "list": [{"name": "local", **appearance, "unfocusedAppearance": dict(appearance)}]},
+                           "themes": [{"name": "One Tone", "custom": "keep", "window": {"experimental.rainbowFrame": True, "custom": 42}, "tab": {"showCloseButton": "never", "iconStyle": "monochrome"}}]})
+    path.write_text(original, encoding="utf-8")
+    instance = {"status": "ok", "settings_path": str(path), "native_correction": {"status": "supported", "version": "1.25.2733.0", "executable": "wt"}, "windows_build": 26200}
+    adapter = TerminalAdapter(path, target_instance=instance)
+    plan = create_plan("#22C55E", ["terminal"], target_instances={"terminal": instance})
+    adapter.snapshot(tmp_path / "backup")
+    assert adapter.apply(plan).changed
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["theme"] == {"light": "One Tone Light", "dark": "One Tone Dark"}
+    assert {theme["name"] for theme in data["themes"]} == {"One Tone Light", "One Tone Dark"}
+    assert {scheme["name"] for scheme in data["schemes"]} == {"One Tone Light", "One Tone Dark"}
+    for profile in (data["profiles"]["defaults"], *data["profiles"]["list"]):
+        for state in (profile, profile["unfocusedAppearance"]):
+            assert state["opacity"] == 100 and state["useAcrylic"] is False
+            assert state["backgroundImage"] == ""
+            assert "tabColor" not in state
+    assert all(data["profiles"]["defaults"][key] == value for key, value in preferences.items())
+    for theme in data["themes"]:
+        assert theme["window"]["useMica"] is False
+        assert theme["tab"]["showCloseButton"] == "never"
+        assert theme["window"]["experimental.rainbowFrame"] is True
+        assert theme["window"]["custom"] == 42 and theme["custom"] == "keep"
+    assert all("selectionForeground" not in scheme for scheme in data["schemes"])
+    assert adapter.verify(plan).verified
+    data["profiles"]["list"][0]["unfocusedAppearance"]["opacity"] = 90
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert not adapter.verify(plan).verified
+    assert adapter.rollback(tmp_path / "backup").verified
+    assert path.read_text(encoding="utf-8") == original
+
+
 def _psreadline_probe_runner(command, **kwargs):
     return subprocess.CompletedProcess(
         command,
@@ -111,14 +148,14 @@ def test_terminal_apply_registers_and_selects_a_valid_scheme(tmp_path):
     applied = adapter.apply(plan)
     assert applied.status == "partial"
     changed = json.loads(settings_path.read_text(encoding="utf-8"))
-    scheme = next(item for item in changed["schemes"] if item["name"] == "One Tone")
-    theme = next(item for item in changed["themes"] if item["name"] == "One Tone")
-    expected_mapping = {"light": "One Tone Light", "dark": "One Tone Dark"}
+    scheme = next(item for item in changed["schemes"] if item["name"] == "One Tone Dark")
+    theme = next(item for item in changed["themes"] if item["name"] == "One Tone Dark")
+    expected_mapping = "One Tone Dark"
     assert changed["profiles"]["defaults"]["colorScheme"] == expected_mapping
     assert all(profile["colorScheme"] == expected_mapping for profile in changed["profiles"]["list"])
-    assert changed["theme"] == "One Tone"
+    assert changed["theme"] == "system"  # unknown host version reports paired themes unsupported
     palette = plan.palette_for(plan.mode)
-    assert all(profile["tabColor"] == palette["accent"] for profile in changed["profiles"]["list"])
+    assert all("tabColor" not in profile for profile in changed["profiles"]["list"])
     assert scheme["background"] == palette["surface"]
     assert scheme["cursorColor"] == palette["accent_text"]
     assert contrast_ratio(scheme["foreground"], scheme["black"]) >= 7
@@ -127,10 +164,11 @@ def test_terminal_apply_registers_and_selects_a_valid_scheme(tmp_path):
     assert scheme["cyan"] == palette["accent_text"]
     assert scheme["green"] == palette["success_text"]
     assert theme["tabRow"]["background"] == palette["surface_subtle"]
-    assert theme["window"]["frame"] == palette["accent"]
+    assert "frame" not in theme["window"]  # unknown version/platform
     assert theme["window"]["applicationTheme"] == "system"
-    assert applied.metadata["generated_values"]["window.frame"] == theme["window"]["frame"]
-    assert applied.metadata["generated_values"]["profile.tabColor"] == palette["accent"]
+    assert applied.metadata["field_capabilities"]["window.frame"] == "unsupported"
+    assert applied.metadata["field_capabilities"]["profile.tabColor"] == "unsupported"
+    assert "profile.tabColor" not in applied.metadata["generated_values"]
     assert adapter.verify(plan).verified is True
 
 
@@ -147,7 +185,8 @@ def test_terminal_functional_text_on_generated_backgrounds(tmp_path, seed):
         assert contrast_ratio(scheme["foreground"], scheme["black"]) >= 7
         assert contrast_ratio(scheme["white"], scheme["black"]) >= 4.5
         assert contrast_ratio(scheme["black"], scheme["white"]) >= 4.5  # reverse
-        assert contrast_ratio(scheme["selectionForeground"], scheme["selectionBackground"]) >= 4.5
+        assert "selectionForeground" not in scheme
+        assert contrast_ratio(plan.palette_for(mode.lower())["selection_foreground"], scheme["selectionBackground"]) >= 4.5
         for field in ("brightBlack", "red", "green", "yellow", "blue", "purple", "cyan"):
             assert contrast_ratio(scheme[field], scheme["background"]) >= 4.5
         assert len({scheme[field] for field in ("red", "green", "yellow", "blue")}) == 4
@@ -187,7 +226,7 @@ def test_terminal_native_correction_is_discovered_bound_verified_and_restored(tm
     assert defaults["font"] == {"face": "custom"}
     assert "background" not in defaults
     assert "foreground" not in defaults["unfocusedAppearance"]
-    assert defaults["unfocusedAppearance"]["opacity"] == 90
+    assert defaults["unfocusedAppearance"]["opacity"] == (90 if version == "unknown" else 100)
     assert changed["profiles"]["list"][0]["custom"] == 42
     assert bound.verify(plan).metadata["rendering_verification"] == "untested"
     if supported:
@@ -257,8 +296,8 @@ def test_terminal_adapter_applies_theme_to_all_profiles_and_restores(tmp_path):
     assert adapter.apply(plan).status == "partial"
     assert adapter.verify(plan).verified is True
     changed = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert all(profile["colorScheme"] == {"light": "One Tone Light", "dark": "One Tone Dark"} for profile in changed["profiles"]["list"])
-    assert all(profile["tabColor"] == plan.palette_for(plan.mode)["accent"] for profile in changed["profiles"]["list"])
+    assert all(profile["colorScheme"] == "One Tone Dark" for profile in changed["profiles"]["list"])
+    assert all("tabColor" not in profile for profile in changed["profiles"]["list"])
     assert adapter.rollback(tmp_path / "backup").verified is True
     assert settings_path.read_text(encoding="utf-8") == original_text
 

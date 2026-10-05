@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Mapping
 
+from ..field_mappings import CHROME_COLOR_ROLES, CHROME_TINT_ROLES
 from ..inventory import inventory_groups, inventory_report
 from ..palette import parse_hex_color
 from ..plan import Plan
@@ -29,47 +30,29 @@ def _manifest(plan: Plan, mode: str | None = None) -> dict[str, Any]:
     palette = plan.palette_for(mode)
     light_mode_surface = palette["surface"] if mode == "light" else palette["background"]
     inactive_text = palette["muted_foreground"] if mode == "light" else palette["background_foreground"]
+    values = {**palette, "light_mode_surface": light_mode_surface, "inactive_text": inactive_text,
+              "toolbar_surface": palette["surface"] if mode == "light" else palette["surface_subtle"]}
     return {
         "manifest_version": 3,
         "version": "1.0.0",
         "name": f"One Tone {plan.id}",
         "description": "Palette-generated One-Tone Chrome theme",
         "theme": {
-            "colors": {
-                "frame": _rgb(palette["surface"]),
-                "frame_inactive": _rgb(light_mode_surface),
-                "toolbar": _rgb(palette["surface"] if mode == "light" else palette["surface_subtle"]),
-                "toolbar_text": _rgb(palette["foreground"]),
-                "toolbar_button_icon": _rgb(palette["foreground"]),
-                "tab_background_text": _rgb(palette["foreground"]),
-                "tab_background_text_inactive": _rgb(inactive_text),
-                "tab_text": _rgb(palette["foreground"]),
-                "bookmark_text": _rgb(palette["foreground"]),
-                "ntp_background": _rgb(light_mode_surface),
-                "ntp_header": _rgb(palette["foreground"]),
-                "ntp_link": _rgb(palette["accent_text"]),
-                "ntp_text": _rgb(palette["foreground"]),
-                "omnibox_background": _rgb(palette["surface_raised"]),
-                "omnibox_text": _rgb(palette["foreground"]),
-                "omnibox_background_tint": _rgb(palette["surface_subtle"]),
-                "omnibox_background_tab_switcher": _rgb(palette["surface_raised"]),
-                "incognito_tab": _rgb(palette["surface_raised"]),
-                "incognito_background": _rgb(light_mode_surface),
-                "button_background": _rgb(palette["accent"]),
-                "button_background_hover": _rgb(palette["selection_background"]),
-                "separator": _rgb(palette["border"]),
-            },
-            "tints": {
-                "buttons": _tint(palette["accent"]),
-                "frame": _tint(palette["surface"]),
-                "background_tab": _tint(palette["surface_subtle"]),
-            },
-            "display_properties": {
-                "control_style": 1,
-                "theme_supports_hidpi": True,
-            },
+            "colors": {field: _rgb(values[role]) for field, role in CHROME_COLOR_ROLES.items()},
+            "tints": {field: _tint(values[role]) for field, role in CHROME_TINT_ROLES.items()},
+            "properties": {"ntp_logo_alternate": int(mode == "dark")},
         },
     }
+
+
+def _field_metadata(plan: Plan, status: str) -> dict[str, Any]:
+    theme = _manifest(plan)["theme"]
+    values = {**theme["colors"], **{f"{group}.{key}": value for group in ("tints", "properties") for key, value in theme[group].items()}}
+    statuses = field_capabilities("chrome")
+    statuses = {name: status if capability == "supported" else capability for name, capability in statuses.items()}
+    return {"field_capabilities": statuses, "generated_values": values,
+            "field_inventory": inventory_report("chrome", statuses, values), "field_groups": inventory_groups("chrome", statuses, values),
+            "rendering_verification": "untested"}
 
 
 def build_chrome_theme(plan: Plan, output_path: Path, mode: str | None = None) -> Path:
@@ -148,9 +131,7 @@ class ChromeAdapter:
                     "unpacked_dirs": unpacked_names,
                     "canonical_unpacked_dirs": unpacked_names,
                     "user_facing_choices": unpacked_names,
-                    "field_capabilities": field_capabilities(self.target),
-                    "field_inventory": inventory_report(self.target),
-                    "field_groups": inventory_groups(self.target),
+                    **_field_metadata(plan, "applied"),
                 },
             )
         except OSError as error:
@@ -158,25 +139,20 @@ class ChromeAdapter:
 
     def verify(self, plan: Plan) -> AdapterResult:
         try:
-            candidates = []
+            verified = True
             for mode in ("light", "dark"):
                 paired_dir = self.output_dir / f"one-tone-{plan.id}-{mode}" / "manifest.json"
                 paired_zip = self.output_dir / f"one-tone-{plan.id}-{mode}.zip"
-                if paired_dir.is_file():
-                    candidates.append(json.loads(paired_dir.read_text(encoding="utf-8")))
-                if paired_zip.is_file():
-                    with zipfile.ZipFile(paired_zip) as archive:
-                        candidates.append(json.loads(archive.read("manifest.json")))
-            expected_frames = {tuple(_rgb(plan.palette_for(mode)["surface"])) for mode in ("light", "dark")}
-            frames = {tuple(manifest.get("theme", {}).get("colors", {}).get("frame", ())) for manifest in candidates}
-            verified = bool(candidates) and expected_frames.issubset(frames)
+                expected = _manifest(plan, mode)
+                manifest = json.loads(paired_dir.read_text(encoding="utf-8"))
+                with zipfile.ZipFile(paired_zip) as archive:
+                    zipped = json.loads(archive.read("manifest.json"))
+                verified = verified and manifest == expected and zipped == expected
             return AdapterResult(
                 self.target, "partial" if verified else "failed", False, verified,
                 "Chrome theme package verified; user activation is still required" if verified else "Chrome theme package mismatch", True,
                 metadata={
-                    "field_capabilities": field_capabilities(self.target),
-                    "field_inventory": inventory_report(self.target),
-                    "field_groups": inventory_groups(self.target),
+                    **_field_metadata(plan, "verified" if verified else "failed"),
                     "canonical_unpacked_dirs": [f"one-tone-{plan.id}-light", f"one-tone-{plan.id}-dark"],
                     "user_facing_choices": [f"one-tone-{plan.id}-light", f"one-tone-{plan.id}-dark"],
                 },

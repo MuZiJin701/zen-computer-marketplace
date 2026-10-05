@@ -9,21 +9,16 @@ from typing import Any, Callable, Mapping
 
 from ..plan import Plan
 from ..editor_instance import EditorSpec
-from ..field_mappings import vscode_theme_colors
-from ..palette import contrast_ratio
+from ..field_mappings import vscode_capabilities, vscode_theme_colors
+from ..palette import readable_text
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
 
 
-def _checked_text_color(palette: Mapping[str, str], role: str, background: str) -> str:
-    color = palette[role]
-    return color if contrast_ratio(color, background) >= 4.5 else palette["foreground"]
-
-
-def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None) -> dict[str, Any]:
+def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None, *, baseline: str = "1.140.0") -> dict[str, Any]:
     mode = mode or plan.mode
     palette = plan.palette_for(mode)
-    colors = vscode_theme_colors(palette, mode, lambda role, background: _checked_text_color(palette, role, background))
+    colors = vscode_theme_colors(palette, mode, baseline)
     return {
         "name": theme_name,
         "type": mode,
@@ -67,6 +62,7 @@ def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None) -> di
 
 
 def build_vsix(plan: Plan, output_path: Path, spec: EditorSpec) -> Path:
+    baseline = spec.color_baseline or "1.140.0"
     theme_name = f"One Tone {spec.target}"
     dark_label = f"{theme_name} Dark"
     light_label = f"{theme_name} Light"
@@ -85,8 +81,8 @@ def build_vsix(plan: Plan, output_path: Path, spec: EditorSpec) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("extension/package.json", json.dumps(package, ensure_ascii=False, indent=2))
-        archive.writestr("extension/themes/one-tone-color-theme.json", json.dumps(build_theme_json(plan, dark_label, "dark"), ensure_ascii=False, indent=2))
-        archive.writestr("extension/themes/one-tone-light-color-theme.json", json.dumps(build_theme_json(plan, light_label, "light"), ensure_ascii=False, indent=2))
+        archive.writestr("extension/themes/one-tone-color-theme.json", json.dumps(build_theme_json(plan, dark_label, "dark", baseline=baseline), ensure_ascii=False, indent=2))
+        archive.writestr("extension/themes/one-tone-light-color-theme.json", json.dumps(build_theme_json(plan, light_label, "light", baseline=baseline), ensure_ascii=False, indent=2))
     return output_path
 
 
@@ -100,6 +96,10 @@ class VSCodeFamilyAdapter:
 
     def target_instance(self) -> dict[str, Any]:
         return self.spec.target_instance()
+
+    def _field_capabilities(self, status: str = "supported") -> dict[str, str]:
+        return field_capabilities(self.target, statuses={name: status if capability == "supported" else capability
+                                                       for name, capability in vscode_capabilities(self.spec.color_baseline).items()})
 
     def _executable_available(self) -> bool:
         if isinstance(self.spec.executable, Path):
@@ -132,7 +132,10 @@ class VSCodeFamilyAdapter:
         try:
             package = json.loads(package_path.read_text(encoding="utf-8"))
             themes = package.get("contributes", {}).get("themes", [])
-            return {item["label"] for item in themes if isinstance(item, dict) and isinstance(item.get("label"), str)}
+            paths = {self._theme_label("dark"): ("./themes/one-tone-color-theme.json", "vs-dark"),
+                     self._theme_label("light"): ("./themes/one-tone-light-color-theme.json", "vs")}
+            return {item["label"] for item in themes if isinstance(item, dict) and item.get("label") in paths
+                    and (item.get("path"), item.get("uiTheme")) == paths[item["label"]]}
         except (OSError, TypeError, AttributeError, json.JSONDecodeError):
             return set()
 
@@ -375,13 +378,16 @@ class VSCodeFamilyAdapter:
             return AdapterResult(self.target, "skipped", False, False, f"{self.target} settings not found: {self.spec.settings_path}")
         if not self._executable_available():
             return AdapterResult(self.target, "skipped", False, False, f"{self.target} executable not found: {self.spec.executable}")
+        if not self.spec.color_baseline:
+            return AdapterResult(self.target, "skipped", False, False, "Workbench version has no verified public color baseline; configuration preserved",
+                                 metadata={"target_instance": self.target_instance(), "field_capabilities": self._field_capabilities()})
         return AdapterResult(
             self.target,
             "ok",
             False,
             True,
             f"{self.target} detected at {self.spec.settings_path}",
-            metadata={"target_instance": self.target_instance()},
+            metadata={"target_instance": self.target_instance(), "field_capabilities": self._field_capabilities()},
         )
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
@@ -403,6 +409,8 @@ class VSCodeFamilyAdapter:
             return AdapterResult(self.target, "failed", False, False, f"{self.target} snapshot failed: {error}")
 
     def apply(self, plan: Plan) -> AdapterResult:
+        if not self.spec.color_baseline:
+            return AdapterResult(self.target, "skipped", False, False, "Workbench color baseline is unverified; configuration preserved")
         try:
             settings = self._read_settings()
             artifacts_dir = self.spec.artifacts_dir or self.spec.extensions_dir.parent / ".one-tone-artifacts"
@@ -442,8 +450,8 @@ class VSCodeFamilyAdapter:
             return AdapterResult(
                 self.target, status, True, False, f"{self.target} VSIX installed and theme selected.{cli_warning}",
                 metadata={
-                    "field_capabilities": field_capabilities(self.target),
-                    "generated_values": build_theme_json(plan, self._theme_label(plan.mode))["colors"],
+                    "field_capabilities": self._field_capabilities("applied"),
+                    "generated_values": build_theme_json(plan, self._theme_label(plan.mode), baseline=self.spec.color_baseline)["colors"],
                     "theme_registration": "applied",
                     "theme_activation": "applied",
                     "theme_labels": list(self._theme_labels()),
@@ -457,6 +465,8 @@ class VSCodeFamilyAdapter:
             return AdapterResult(self.target, "failed", False, False, f"{self.target} apply failed: {error}")
 
     def verify(self, plan: Plan) -> AdapterResult:
+        if not self.spec.color_baseline:
+            return AdapterResult(self.target, "skipped", False, False, "Workbench color baseline is unverified")
         try:
             settings = self._read_settings()
             candidates = self._registered_extension_dirs()
@@ -476,6 +486,11 @@ class VSCodeFamilyAdapter:
             )
             if not verified:
                 return AdapterResult(self.target, "failed", False, False, f"{self.target} theme verification failed")
+            for mode, path in zip(("dark", "light"), self._theme_files(extension_dir)):
+                actual = json.loads(path.read_text(encoding="utf-8"))
+                expected = build_theme_json(plan, self._theme_label(mode), mode, baseline=self.spec.color_baseline)
+                if actual != expected:
+                    return AdapterResult(self.target, "failed", False, False, f"{self.target} {mode} theme contents do not match Plan")
             if self.spec.ai_panel_supported:
                 status = "ok"
                 message = f"{self.target} registration and active theme verified"
@@ -489,8 +504,8 @@ class VSCodeFamilyAdapter:
                 True,
                 message,
                 metadata={
-                    "field_capabilities": field_capabilities(self.target),
-                    "generated_values": build_theme_json(plan, self._theme_label(plan.mode))["colors"],
+                    "field_capabilities": self._field_capabilities("verified"),
+                    "generated_values": build_theme_json(plan, self._theme_label(plan.mode), baseline=self.spec.color_baseline)["colors"],
                     "theme_registration": "verified",
                     "theme_activation": "verified",
                     "theme_labels": list(self._theme_labels()),

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ..plan import Plan
+from ..inventory import inventory_groups, inventory_report
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
 
@@ -84,9 +85,16 @@ def _skip_result(message: str) -> AdapterResult:
     return AdapterResult("chatgpt-app", "skipped", False, False, message)
 
 
-def _theme_metadata() -> dict[str, Any]:
+def _theme_metadata(plan: Plan | None = None, status: str = "supported") -> dict[str, Any]:
+    statuses = {name: status if capability == "supported" else capability for name, capability in field_capabilities("chatgpt-app").items()}
+    values = {f"{table.removeprefix('desktop.')}.{key}": value for table, entries in _theme_updates(plan.palettes).items() for key, value in entries.items()} if plan else {}
+    if plan:
+        values["appearanceTheme"] = "system"
     return {
-        "field_capabilities": field_capabilities("chatgpt-app"),
+        "field_capabilities": statuses,
+        "generated_values": values,
+        "field_inventory": inventory_report("chatgpt-app", statuses, values),
+        "field_groups": inventory_groups("chatgpt-app", statuses, values),
         "rendering_verification": "untested",
         "embedded_terminal": {
             "status": "unsupported",
@@ -96,7 +104,7 @@ def _theme_metadata() -> dict[str, Any]:
 
 
 def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, Any]]:
-    updates: dict[str, dict[str, Any]] = {}
+    updates: dict[str, dict[str, Any]] = {"desktop": {"appearanceTheme": "system"}}
     for table_name, mode in zip(_THEME_TABLES, ("light", "dark")):
         palette = palettes[mode]
         updates[table_name] = {
@@ -129,13 +137,18 @@ def _replace_verified_values(
     missing_font_tables: tuple[str, ...],
 ) -> str:
     updates = _theme_updates(palettes)
+    pending = {section: dict(values) for section, values in updates.items()}
     section = ""
     output: list[str] = []
-    header_pattern = re.compile(r"^\s*\[([^\]]+)\]\s*(?:\r?\n)?$")
+    header_pattern = re.compile(r"^\s*\[([^\]]+)\]\s*(?:#.*)?(?:\r?\n)?$")
     assignment_pattern = re.compile(r"^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(.*?)(\r?\n)?$")
     for line in text.splitlines(keepends=True):
         header = header_pattern.match(line)
         if header:
+            if output and not output[-1].endswith(("\n", "\r")):
+                output.append("\n")
+            for key, value in pending.pop(section, {}).items():
+                output.append(f"{key} = {json.dumps(value)}\n")
             section = header.group(1)
             output.append(line)
             continue
@@ -145,7 +158,16 @@ def _replace_verified_values(
             output.append(line)
             continue
         newline = assignment.group(5) or ""
+        pending.get(section, {}).pop(assignment.group(2), None)
         output.append(f"{assignment.group(1)}{assignment.group(2)}{assignment.group(3)}{json.dumps(replacement)}{newline}")
+    if output and not output[-1].endswith(("\n", "\r")):
+        output.append("\n")
+    for key, value in pending.pop(section, {}).items():
+        output.append(f"{key} = {json.dumps(value)}\n")
+    for table_name, values in pending.items():
+        if values:
+            output.append(f"\n[{table_name}]\n")
+            output.extend(f"{key} = {json.dumps(value)}\n" for key, value in values.items())
     for table_name in missing_font_tables:
         if output and not output[-1].endswith(("\n", "\r")):
             output.append("\n")
@@ -155,29 +177,20 @@ def _replace_verified_values(
 
 def _matches_plan(payload: dict[str, Any], plan: Plan) -> bool:
     desktop = payload["desktop"]
+    if desktop.get("appearanceTheme") != "system":
+        return False
+    updates = _theme_updates(plan.palettes)
     for full_table_name, mode in zip(_THEME_TABLES, ("light", "dark")):
         theme = desktop[full_table_name.split(".", 1)[1]]
-        palette = plan.palette_for(mode)
-        expected = {
-            "accent": palette["accent"],
-            "contrast": 100,
-            "ink": palette["foreground"],
-            "opaqueWindows": True,
-            "surface": palette["surface"],
-        }
+        expected = updates[full_table_name]
         if any(theme.get(key) != value for key, value in expected.items()):
             return False
         if not isinstance(theme.get("fonts"), dict):
             return False
         semantic = theme.get("semanticColors")
-        if isinstance(semantic, dict):
-            expected_semantic = {
-                "diffAdded": palette["success_text"],
-                "diffRemoved": palette["error_text"],
-                "skill": palette["accent_text"],
-            }
-            if any(key in semantic and semantic[key] != value for key, value in expected_semantic.items()):
-                return False
+        expected_semantic = updates[f"{full_table_name}.semanticColors"]
+        if not isinstance(semantic, dict) or any(semantic.get(key) != value for key, value in expected_semantic.items()):
+            return False
     return True
 
 
@@ -238,8 +251,13 @@ class CodexAdapter:
             _missing_font_tables(payload),
         )
         try:
+            candidate = tomllib.loads(updated)
+            if not _is_v1_payload(candidate) or not _matches_plan(candidate, plan):
+                return _skip_result("ChatGPT App TOML layout cannot be safely updated; configuration preserved")
             atomic_write_text(self.config_path, updated, newline="")
-            return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1, metadata=_theme_metadata())
+            return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1, metadata=_theme_metadata(plan, "applied"))
+        except tomllib.TOMLDecodeError:
+            return _skip_result("ChatGPT App TOML layout cannot be safely updated; configuration preserved")
         except OSError as error:
             return AdapterResult(self.target, "failed", False, False, f"ChatGPT App apply failed: {error}", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
 
@@ -255,7 +273,7 @@ class CodexAdapter:
             verified,
             "ChatGPT App config.toml theme verified; embedded terminal unsupported; rendering untested" if verified else "ChatGPT App config.toml theme does not match Plan; rendering untested",
             version=CHATGPT_APP_CONFIG_SCHEMA_V1,
-            metadata=_theme_metadata(),
+            metadata=_theme_metadata(plan, "verified" if verified else "failed"),
         )
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:

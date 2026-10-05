@@ -41,8 +41,33 @@ _Avoid_: 某个应用的临时颜色、每个字段一个颜色
 _Avoid_: 任意两个颜色、所有颜色必须不同
 
 **Color field**  
-某个 Target 公开主题 schema 中接受颜色、色调或显示属性的字段。  
+某个 Target 主题中接受颜色或色调的字段；是否可用由该 Target 的版本和字段证据决定。
+
 _Avoid_: 所有配置项
+
+**Appearance field**
+
+Target 的主题颜色、字体、透明度或外观行为字段。字段出现在清单中不代表工具会修改它；保留、受管修改与不支持是不同的处理方式。
+
+_Avoid_: 所有应用设置、列出即应用
+
+**Appearance policy**
+
+某次 Preview 明确记录并纳入 Hash 的受管外观策略，说明实心窗口、原生系统模式跟随和保留字体/系统偏好的处理边界；策略升级要求新的 Plan，不能静默扩大旧 Plan 的授权。
+
+_Avoid_: 通用配置系统、后台主题监控
+
+**Solid appearance**
+
+受管窗口使用自身不透明背景，并关闭已验证入口中的 Acrylic、Mica、窗口透明合成及背景图片覆盖；编辑器选择、Diff 和匹配等装饰叠层仍可保留官方要求的 alpha。
+
+_Avoid_: 所有颜色 alpha 都为 255、修改字体或高对比度
+
+**Example Seed Color**
+
+文档和命令示例使用的参考主色，不是省略颜色输入时自动选择的默认值。
+
+_Avoid_: 默认绿色、强制主色
 
 **Field Evidence Matrix**
 
@@ -173,11 +198,12 @@ _Avoid_: 每个生成文件都是一个主题
 _Avoid_: 当前命令所在目录
 
 **Field inventory**  
-某个 Target 在指定版本基线下应覆盖的公开主题字段清单，是测试和 Verify 的依据。  
+某个 Target 在指定版本基线下应覆盖的 Appearance field 清单，是字段核查、测试和 Verify 的依据；公开字段与已验证运行时字段分别标明证据边界。
+
 _Avoid_: 可能存在的字段、未经验证的私有字段
 
 **Capability status**  
-某个字段在实际 Target 上的状态：supported、applied、verified、unsupported 或 not-applicable。
+某个字段在实际 Target 上的状态：supported、applied、verified、failed、unsupported 或 not-applicable。公开文档清单与实际注册/平台条件共同决定适用性；字段出现在公开清单不自动成为 installed-version support。
 _Avoid_: 用 Target 总体状态掩盖字段差异
 
 **Mode**  
@@ -192,7 +218,7 @@ _Avoid_: 每个 Mode 独立追求最大对比度
 ### Workflow language
 
 **Plan**  
-用户在 Preview 阶段确认的 Seed Color、Mode、Target 和字段能力预期。对于需要发现配置实例的 Target，Plan 还保存已解析且纳入 Hash 的可执行文件、设置文件和扩展目录；Apply 与 Verify 必须使用同一组路径。
+用户在 Preview 阶段确认的 Seed Color、Mode、Target、Appearance policy 和字段能力预期。对于需要发现配置实例的 Target，Plan 还保存已解析且纳入 Hash 的可执行文件、设置文件、扩展目录及版本基线；Apply 与 Verify 必须使用同一组路径。历史 Transaction 的恢复不依赖重新加载 Plan。
 _Avoid_: 临时配置、Apply 参数
 
 **Transaction**  
@@ -328,7 +354,7 @@ _Avoid_: 自动换盘、备用安装盘
 - Git decoration 是 Target 的语义状态 Color field，使用语义文字 role 和实际相邻背景。
 - Inline prediction 属于 `terminal` Target 的可选 Shell/PSReadLine 子能力，Profile 位置和能力在 Preview 中发现，并受同一 Transaction 安全流程约束。
 - Native foreground correction 属于终端宿主能力；Configuration match 与 Rendering acceptance 分别记录，SSH 的远端输出由本地宿主渲染。
-- Field inventory 定义应覆盖的 Color field。
+- Field inventory 定义应核查的 Appearance field，其中 Color field 是颜色与色调子集。
 - Plan 保存一次 Preview 的 Target 和 Mode 预期。
 - Preview 为需要配置实例发现的 Target 解析唯一 Active Target instance；Apply 与 Verify 不重新猜测路径。
 - Transaction 记录一次 Apply 及其后续 Verify 或 Rollback。

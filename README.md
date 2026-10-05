@@ -67,7 +67,7 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 ### 统一 Windows 主题
 
 ```text
-使用 $zen-one-tone-windows，把我的电脑主题统一为翠绿色 #10B981。先预览，不要立即应用。
+使用 $zen-one-tone-windows，把我的电脑主题统一为绿色 #22C55E。先预览，不要立即应用。
 ```
 
 ### 整理桌面
@@ -96,14 +96,14 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 ## 注意事项
 
-- Seed Color 作为 ChatGPT App 和 Windows 的 Theme anchor/Accent source；大面积 ChatGPT App Surface 和 Windows 壁纸使用 appearance-safe 的 Tonal surface，避免纯色铺满。ChatGPT App 主题保持用户当前 `appearanceTheme`，并使用高对比度配置。
-- Windows Terminal 会为所有已发现 Profile 写入成对 Light/Dark Scheme、ANSI 颜色和 Tab 颜色，Profile 随 Windows 系统模式切换，窗口主题使用 `system`，不强制 Windows 深色模式；可选地发现并回滚 Windows Terminal 会话中的 PSReadLine 预测颜色。
+- Seed Color 作为 Theme anchor/Accent source；ChatGPT App Surface 和 Windows 壁纸继续使用派生的 Tonal surface。确认 Apply 后关闭 Windows 透明效果，ChatGPT App 使用 `appearanceTheme = system`、实心窗口和最高对比度；已有字体值保持不变，只补齐缺失的 `fonts` table。
+- Windows Terminal 覆盖 defaults、所有 Profile 和已有未聚焦配置；按 Preview 发现的版本关闭 Acrylic/Mica、设 `opacity = 100`、清空背景图片、移除固定 `tabColor`。保留字体、光标形状和其他偏好；支持版本使用成对 Light/Dark Scheme 和窗口主题，`applicationTheme = system`；未知能力保留并报告 `partial`。
 - PowerShell 命令与 Shell/PSReadLine 发现使用 PowerShell 7 `pwsh`，不自动选择 Windows PowerShell；显式宿主覆盖也必须验证为 Core `>= 7`。这不改变 Windows Terminal 的默认 Profile。
 - Terminal 正文在 Light/Dark 都按受管背景 `7:1` 验收，其他功能文字为 `4.5:1`。ANSI black 用作受管背景，white/brightWhite 为正文色，brightBlack 为次要文字色；任意 ANSI 组合仍需实际渲染复核。Preview 读取 Windows Terminal 可执行文件版本，`>= 1.16` 时为 defaults、所有 Profile 和已有未聚焦配置启用 `adjustIndistinguishableColors = always`，并支持 Verify 和事务回滚；未知/旧版本保留该字段并报告 `partial`。
 - ChatGPT App 内嵌终端使用独立的 xterm/CSS 色表；当前没有可验证的用户配置入口控制完整 ANSI 表或原生前景修正。桌面主题 Verify 不代表内嵌终端、dim、reverse、256 色、RGB 或真实 SSH 视觉验收通过，报告中的 `rendering_verification` 保持 `untested`。
-- VS Code 和 TRAE 主题覆盖标准 Workbench、Git decoration、编辑器选择/光标、终端 ANSI、链接、通知和语义高亮字段，并启用应用自带的系统模式自动跟随；各自的 AI 专属面板仍由应用自行决定。
+- VS Code/TRAE 按公开文档与本机 Workbench 版本注册表的交集生成主题，覆盖菜单、通知、Quick Input、Widget、Diff、Chat、Merge、Notebook、Debug、Testing 等适用字段，保留透明装饰叠层并检查真实背景配对。已核查基线为 `1.140.0` 和 `1.107.1`；未知版本安全跳过，私有 AI 面板明确 unsupported。
 - Windows 开启“自动从背景中选取强调色”时，系统可能覆盖固定强调色；想保持稳定颜色，请在 Windows 设置中关闭该选项。
-- Chrome 会生成 Manifest V3 本地主题的 Light/Dark 两个 canonical unpacked 目录；ZIP 是内部打包产物，需到 `chrome://extensions` 手动加载；普通本地 Skill 不能静默安装 Chrome 扩展。
+- Chrome 生成完整公开的 24 个 colors、6 个 tints 和适用 properties；没有 NTP 背景图时省略无作用的对齐/重复属性。Light/Dark 两个 canonical unpacked 目录由用户在 `chrome://extensions` 手动加载，ZIP 是内部产物；浏览器字体和窗口透明度没有主题入口，保持原值。
 - `.one-tone` 默认固定在 Skill 根目录下，与 Agent 当前工作目录无关；Target 路径仍通过用户目录、PATH、launcher 参数或环境变量探测，不依赖开发机盘符、Everything 或机器临时路径。仅测试或明确的高级用法可以覆盖运行时目录。
 
 ## 仓库结构
@@ -129,6 +129,8 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 已确认的主题字段覆盖、浅深模式、相邻区域可区分性、版本能力和验收范围见 [主题字段覆盖与相邻区域可区分性开发说明](docs/specs/2026-07-25-theme-field-coverage-and-separation.md)。当前结构审计见 [架构说明](docs/architecture.md)。
 
+六目标完整公开字段、示例绿 `#22C55E`、实心外观与瘦身的 [开发规格](docs/specs/2026-10-05-official-theme-coverage-and-slimming.md) 已落实到运行时和 fixture 回归；来源、版本能力及真实界面未验项见 [字段证据](docs/theme-field-coverage-evidence.md)。原 Issue 状态未修改。新 Appearance policy 和字段能力纳入 Plan Hash；旧 Plan 必须重新 Preview，已有事务仍可按 ID 回滚。
+
 TRAE Git decoration、Windows Terminal PSReadLine 预测颜色和 Windows 任务栏模式恢复见 [主题回归与可移植 Shell 集成开发说明](docs/specs/2026-08-03-theme-regressions-and-portable-shell-integration.md)。
 
 终端功能文字实现范围见 [终端可读性 spec](docs/specs/2026-10-05-terminal-readability.md)，配置、宿主能力及真实界面未验项见 [验收证据](docs/terminal-readability-evidence.md)。可在两个宿主分别运行 Skill 内 `python .\scripts\terminal_readability_sample.py`；真实 SSH 诊断可通过标准输入执行同一脚本，不写入远端文件。运行样例只证明输出覆盖，最终显示仍需人工复核。
@@ -137,4 +139,4 @@ TRAE Git decoration、Windows Terminal PSReadLine 预测颜色和 Windows 任务
 
 当前结构保留“根测试 harness + 可独立分发 Skill runtime”的边界；新增 docs/specs 作为主动开发说明目录，历史规划材料不作为当前架构入口。
 
-维护者验证 One-Tone 的流程是：`preview '#10B981'` → `apply plan-... --confirm` → `verify plan-...` → `rollback tx-...`。Skill 目录内的入口示例是 `python .\scripts\run_one_tone.py preview '#10B981'`。
+维护者验证 One-Tone 的流程是：`preview '#22C55E'` → `apply plan-... --confirm` → `verify plan-...` → `rollback tx-...`。Skill 目录内的入口示例是 `python .\scripts\run_one_tone.py preview '#22C55E'`。
