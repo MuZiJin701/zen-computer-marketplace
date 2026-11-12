@@ -42,30 +42,27 @@ The Plugin is the installable envelope. The Skill is the independently distribut
 - Each Target Adapter is the next Seam for mapping public Color fields to Palette roles and for Detect, Snapshot, Apply, Verify and Rollback.
 - Transaction persistence is the safety Seam; it records each Target operation and keeps compensation local to the failed Target.
 - Field inventory is the documentation and testing Seam; it defines expected coverage without coupling tests to private implementation helpers.
-- Marketplace metadata is the installation Seam; it points to Plugin envelopes but does not contain runtime logic.
-- Desktop workflow is the highest seam for `zen-desktop-zero`: it resolves the current user's Resolved desktop, creates a Preview Plan, applies confirmed delete/move operations, verifies the result and keeps a transaction ledger for explicit file-move rollback.
-- Toolchain workflow is the highest seam for `zen-scoop-toolchain`: it preflights the fixed Scoop root, detects the Core toolchain baseline, applies confirmed Scoop-first installation with winget fallback and verifies source/path conformity.
+- Marketplace metadata is the installation Seam; it points to the `zen-one-tone-windows` Plugin envelope but does not contain runtime logic.
 
-Do not add a shared runtime or cross-Plugin import layer until two Plugins genuinely need the same behavior. Reuse repository tooling and documentation conventions, not hidden runtime coupling.
+Do not add a shared runtime or cross-Plugin import layer. Reuse repository tooling and documentation conventions, not hidden runtime coupling.
 
 ## Responsibilities
 
-- Marketplace manifest: list installable Plugin envelopes.
-- Plugin envelope: provide Codex metadata and own its Skills.
+- Marketplace manifest: list the installable `zen-one-tone-windows` Plugin envelope.
+- Plugin envelope: provide Codex metadata and own its Skill.
 - Skill package: provide instructions, references, launcher and runtime for one capability.
 - Root test harness: run repository-wide marketplace, Plugin, Skill and runtime tests.
-- Palette: generate explicit Light/Dark Visual roles, preserve Mode coherence across one Seed Color, limit corresponding large-area OKLCH lightness difference to `0.35`, and validate text, region contrast and cross-Mode appearance.
+- Palette: generate explicit Light/Dark Visual roles, preserve Mode coherence across one Seed Color, limit corresponding large-area OKLCH lightness difference to `0.75`, keep semantic text hues distinct in OKLCH, and validate text, region contrast and cross-Mode appearance.
 - Plan: hash Seed Color, both Mode Palettes, selected Targets, resolved instances, actual field capabilities and the current Appearance policy. Older policies or changed field contracts require Preview before any Transaction/Snapshot is created. Historical Transaction Rollback remains independent of Plan loading. `palettes` is the only persisted Palette representation; `mode` is a presentation default, not a Windows-mode switch.
 - Storage: validate safe path components and perform atomic persistence.
 - Transaction: journal Apply operations with JSON-safe report values, preserve Snapshots and coordinate compensation.
-- Target Adapters: map public field inventories to Palette roles, resolve one Active Target instance during Preview, and report field-level capability.
+- Target Adapters: map public field inventories to Palette roles, resolve one Active Target instance during Preview, and report field-level capability across `windows`, `terminal`, `vscode`, `trae`, `antigravity-ide`, `chatgpt-app`, `antigravity`, and `chrome`.
 - The Terminal Adapter also owns an optional Shell/PSReadLine sub-capability: Preview discovers the PowerShell 7 `pwsh` Profile and public prediction color fields, while Apply/Verify/Rollback use the Plan-persisted inputs and preserve unrelated Profile content. Default discovery excludes Windows PowerShell; explicit executable overrides must also verify as Core >= 7. Missing PowerShell 7 skips the prediction sub-capability, without changing the user's default Terminal Profile.
-- Terminal native foreground correction is discovered from the executable version resource during Preview (including a Scoop shim's resolved executable). Windows Terminal >= 1.16 supports `adjustIndistinguishableColors = always`; unknown/older versions preserve that setting and report partial. Resolved executable, version and capability are persisted in the hashed Terminal instance; Apply/Verify do not probe another host. Defaults, every Profile and existing unfocused appearances share the generated Scheme and correction policy. JSON restoration uses the existing atomic text writer; Profile write failure fails the Target and invokes transaction compensation.
-- Explicit Light/Dark Palette `foreground` now enforces 7:1 on `surface`; the legacy omitted-Mode generator retains its existing contract. Terminal black uses `surface`, white/brightWhite use `foreground`, and brightBlack uses `muted_foreground`, protecting primary/white text on black backgrounds and reverse pairs. A single ANSI table cannot satisfy every program-selected pair; native correction is not a guarantee of the acceptance thresholds.
-- Configuration matching and rendering acceptance are independent. Terminal and ChatGPT App results carry `rendering_verification = untested`. The App's embedded xterm reads its own CSS color tokens; the verified desktop TOML schema exposes no supported full ANSI/minimum-contrast setting. It remains unsupported without editing application bundles or guessing private fields. Local program configuration is added only after a named/versioned program is reproduced and a supported configuration seam is found.
-- Editor instance resolution: read-only discovery resolves settings/extensions and the launcher's Workbench metadata, including forwarded CMD/Scoop launchers and commit-directory resource layouts. Persist the exact paths and verified color baseline in the Plan; Apply/Verify reuse them. Unknown baselines skip without guessed compatibility.
-- CLI: expose Preview, Apply, Verify and Rollback without bypassing the workflow, and emit recursively JSON-safe machine-readable reports.
-- Workstation Plugin runtime: remain self-contained per Skill; use structured `ok`, `partial`, `failed` and `skipped` results, safe path validation and atomic Plan/Transaction persistence without importing another Plugin's runtime.
+- Terminal native foreground correction is discovered from the executable version resource during Preview (including a Scoop shim's resolved executable). Windows Terminal >= 1.16 supports `adjustIndistinguishableColors = always`; unknown/older versions preserve that setting and report partial. Resolved executable, version and capability are persisted in the hashed Terminal instance; Apply/Verify do not probe another host. Defaults, every Profile and existing unfocused appearances default to `One Tone Dark` (`applicationTheme = dark`) while registering both `One Tone Light` and `One Tone Dark` Schemes and window themes. JSON restoration uses the existing atomic text writer; Profile write failure fails the Target and invokes transaction compensation.
+- Explicit Light/Dark Palette `foreground` enforces 7:1 on `surface`; the legacy omitted-Mode generator retains its existing contract. Terminal black uses `surface`, white/brightWhite use `foreground`, and brightBlack uses `muted_foreground`, protecting primary/white text on black backgrounds and reverse pairs. A single ANSI table cannot satisfy every program-selected pair; native correction is not a guarantee of the acceptance thresholds.
+- Configuration matching and rendering acceptance are independent. Terminal, ChatGPT App, and Antigravity results carry `rendering_verification = untested`. The App's embedded xterm reads its own CSS color tokens; the verified desktop TOML schema exposes no supported full ANSI/minimum-contrast setting. It remains unsupported without editing application bundles or guessing private fields. Local program configuration is added only after a named/versioned program is reproduced and a supported configuration seam is found.
+- Editor instance resolution: prioritizes the standard C-drive user configuration (`%APPDATA%\<App>\User\settings.json` and `~/.<app>/extensions`) while keeping existing Scoop portable `data/` or launcher directories in `mirror_targets` for synchronized Snapshot/Apply/Verify/Rollback without altering Scoop's directory structure. Discovers the launcher's Workbench metadata (including commit-hashed resource subdirectories) and normalizes `1.x` versions (`<1.140` -> `1.107.1`, `>=1.140` -> `1.140.0`).
+- CLI: expose `sync` (`Preview → Apply → Verify`), `preview`, `apply`, `verify` and `rollback [--latest]` without bypassing the safety workflow, and emit recursively JSON-safe machine-readable reports.
 
 ## Test layout
 
@@ -87,9 +84,7 @@ Tests mirror the distribution hierarchy:
 ### Correct choices
 
 - The Marketplace manifest is separate from Plugin metadata.
-- Each Plugin has its own envelope and Skills directory.
 - The `zen-one-tone-windows` Plugin owns the complete One-Tone Skill runtime.
-- The `zen-desktop-zero` and `zen-scoop-toolchain` Plugins each own one independent workstation Skill and its runtime.
 - The root harness is not packaged as a runtime distribution.
 - Tests can exercise the Skill source without being shipped with it.
 
@@ -97,8 +92,6 @@ Tests mirror the distribution hierarchy:
 
 - The Skill path is deep because the distribution boundary is real.
 - The root harness and Skill runtime have separate uv projects; commands must name which project they target.
-- Plugin-specific runtime tests are more verbose in exchange for locality and future multi-Plugin isolation.
-- Workstation tests use temporary directories and fake desktop, process and installer backends; real deletion, elevation, process termination and package installation remain separate risk boundaries.
 
 ### Rules for future Plugins
 

@@ -257,7 +257,10 @@ def test_windows_apply_keeps_white_shell_glyphs_legible(tmp_path):
     assert registry.values["AccentColorMenu"] == windows_color_value(shell_accent)
     assert registry.values["StartColorMenu"] == windows_color_value(shell_accent)
     assert registry.values["AccentColor"] == windows_color_value(shell_accent)
+    assert registry.values["AccentColorInactive"] == windows_color_value(plan.palette_for(plan.mode)["surface_subtle"])
     assert registry.values["ColorizationColor"] == windows_colorization_value(shell_accent)
+    surface_rgb = bytes.fromhex(plan.palette_for(plan.mode)["surface"][1:])
+    assert registry.values["Background"] == f"{surface_rgb[0]} {surface_rgb[1]} {surface_rgb[2]}"
 
 
 def test_windows_registry_writes_each_value_to_its_declared_hive_path(monkeypatch):

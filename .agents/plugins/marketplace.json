@@ -15,30 +15,6 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Productivity"
-    },
-    {
-      "name": "zen-desktop-zero",
-      "source": {
-        "source": "local",
-        "path": "./plugins/zen-desktop-zero"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    },
-    {
-      "name": "zen-scoop-toolchain",
-      "source": {
-        "source": "local",
-        "path": "./plugins/zen-scoop-toolchain"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer Tools"
     }
   ]
 }

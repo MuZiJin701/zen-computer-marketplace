@@ -1,6 +1,6 @@
 # Zen Computer Marketplace Domain Context
 
-Zen Computer Marketplace 是面向极简、有序电脑使用场景的跨 Agent Skill 市场。One-Tone 是其中把同一 Seed Color 统一到受支持 Windows Target 的可回滚主题工具；工作站 Plugin 提供桌面和基础工具链规范。
+Zen Computer Marketplace 是面向极简、有序电脑使用场景的跨 Agent Skill 市场。当前专注于 `zen-one-tone-windows`——把同一 Seed Color 统一到受支持 Windows Target 的可验证、可回滚主题工具。
 
 ## Language
 
@@ -149,12 +149,24 @@ _Avoid_: 只校验 AccentPalette 注册表回读
 Plugin 内可独立分发的能力单元；其说明、引用资料、脚本和运行时项目都放在同一个 Skill 目录内。
 
 **Target**  
-一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、ChatGPT desktop app 或 Chrome。
+一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT desktop app、Antigravity desktop app 或 Chrome。
 _Avoid_: 应用（当 Windows 系统也在讨论范围内时）
 
 **ChatGPT desktop app**
 当前 ChatGPT Windows/macOS 桌面产品，包含 Chat、Work 和 Codex 视图；本项目的 `chatgpt-app` Target 只管理桌面 App 的用户界面主题，不管理 Codex CLI/TUI。
 _Avoid_: Codex CLI、Windows Terminal 主题
+
+**Antigravity desktop app**
+Google Antigravity 2.0 桌面客户端（Target 标识符 `antigravity`），通过 `~/.gemini/config/config.json` 的 `userSettings.themeMode`、`customThemeSeedsLight`、`customThemeSeedsDark` 以及 `%APPDATA%\Antigravity\app_storage.json` 的 `hubSurfaceBackgroundColor` 管理浅色/深色自定义主题种子与 Hub 表面背景色。
+_Avoid_: Antigravity IDE、浏览器插件
+
+**Antigravity IDE**
+基于 VS Code Workbench 的 Antigravity IDE 桌面编辑器（Target 标识符 `antigravity-ide`），与 VS Code、TRAE 共享同一套 VS Code 家族扩展主题与 `settings.json` 受管机制。
+_Avoid_: Antigravity 2.0 桌面客户端
+
+**Standard editor configuration priority**
+对于 VS Code、TRAE 和 Antigravity IDE，工具优先解析并使用 C 盘标准配置目录（`%APPDATA%\<Editor>\User\settings.json` 与 `~/.<editor>/extensions`）作为主目标实例；若同一可执行文件旁已存在 Scoop 便携版 `data/` 目录或启动器目录，工具同步镜像写入、快照、校验和回滚该目录，避免因启动入口不同而漏加载主题，同时不修改或破坏 Scoop 目录结构。
+_Avoid_: 强制迁移 Scoop 目录、仅写便携目录
 
 **Theme registration**
 
@@ -212,8 +224,8 @@ _Avoid_: 强制模式、运行模式
 
 **Mode coherence**
 
-同一 Seed Color 的 Light 与 Dark 变体共享色相、区域层级和主题身份，只改变必要的明度与对比关系；两者不要求使用相同颜色，但不应因过大的明暗跨度而呈现为两套独立主题。
-_Avoid_: 每个 Mode 独立追求最大对比度
+同一 Seed Color 的 Light 与 Dark 变体共享色相、区域层级和主题身份，同时允许浅色模式拥有真正明亮干净的表面（OKLCH 明度跨度上限 `0.75`，Light 表面亮度上限 `0.96`），深色模式保持深邃层次。Windows Terminal 默认固定激活深色主题（`One Tone Dark`），同时保留浅色与深色两套配色方案供手动切换。
+_Avoid_: 压暗浅色表面以迁就窄跨度、把 Terminal 默认设为浅色
 
 ### Workflow language
 
@@ -256,96 +268,6 @@ _Avoid_: 撤销所有修改
 至少有一个 Target 或字段完成，同时存在 unsupported、用户操作、失败或未验证项的结果。  
 _Avoid_: 大致成功
 
-### Workstation language
-
-**Desktop zero**
-当前登录 Windows 用户的桌面最终不保留用户可见内容：快捷方式直接删除，其他文件和文件夹分类移动到 `D:\data`；公共桌面不属于该范围。
-_Avoid_: 清理桌面、桌面归档
-
-**Resolved desktop**
-Windows 当前用户实际呈现为桌面的目录；它可以是本地目录，也可以是被重定向到 OneDrive 或其他位置的目录。
-_Avoid_: 固定桌面路径、默认桌面
-
-**Desktop classification**
-桌面上的非快捷方式内容按预先确认的分类规则移动到 `D:\data`；移动前必须展示分类和目标路径。
-_Avoid_: 随意搬家、未知分类
-
-**Deterministic classification**
-文件分类依据扩展名和已有文件夹等可解释规则，不依据 AI 对文件内容的猜测；无法判断的内容进入未分类区域。
-_Avoid_: 智能猜测、静默重命名
-
-**Desktop categories**
-规范分类目录为文档、图片、视频、音频、压缩包、安装包、代码和未分类；已有文件夹整体归入相应类别。
-_Avoid_: 每次运行临时建类、按文件内容猜类
-
-**Deterministic name collision**
-分类目标已有同名内容时不覆盖原内容，使用稳定的数字后缀生成新名称，并在报告中说明。
-_Avoid_: 静默覆盖、随机重命名
-
-**Constrained repair**
-整理失败时可以申请当前任务所需的权限，并仅针对实际锁定目标的非系统进程尝试关闭；未知或系统进程不得被强行终止。
-_Avoid_: 全局提权、关闭所有占用者
-
-**Desktop cleanup workflow**
-桌面整理先生成待删除和待移动清单，用户确认后执行，最后验证桌面状态和移动结果。
-_Avoid_: 调用即执行、无清单整理
-
-**Move rollback ledger**
-文件移动保留内部来源与目标记录，正常整理结果不主动展示；用户明确要求回滚时才使用该记录，快捷方式删除不在回滚范围内。
-_Avoid_: 把删除伪装成可恢复、自动回滚
-
-**Cleanup transaction**
-一次桌面整理及其文件移动记录通过明确的事务 ID 标识；回滚必须指定该 ID。
-_Avoid_: 默认回滚最近一次、回滚所有整理
-
-**Existing tool preservation**
-工具链插件不卸载或重置已存在的软件；它只识别缺失项并帮助用户补齐。
-_Avoid_: 清理重装、环境归零
-
-**Toolchain source fallback**
-缺失软件优先通过 Scoop 安装，Scoop 无法提供或安装失败时再尝试 winget；winget 的安装路径通常由系统决定。
-_Avoid_: 强制统一所有安装路径、保证 Scoop 覆盖一切
-
-**Scoop root**
-该工具链的 Scoop 安装根目录固定为 `D:\software\scoop`；无法在该位置建立时，Scoop 配置失败。
-_Avoid_: 默认用户目录、隐式换盘
-
-**Core toolchain baseline**
-Python、Git、uv 和 Node.js 是该工作站规范的基础工具；缺失时优先由 Scoop 补齐，Scoop 无法提供时才转向 winget。
-_Avoid_: 可选开发工具、任意软件清单
-
-**Explicit install confirmation**
-工具链 Skill 必须先展示缺失项、安装来源和路径限制，用户明确确认后才执行安装。
-_Avoid_: 静默安装、模糊授权
-
-**Taskbar search**
-Windows 任务栏上的系统 Search 搜索框，是本项目规定的软件启动入口。
-_Avoid_: 导航窗口、桌面启动、任意启动器
-
-**Search-first desktop rule**
-桌面零规范要求用户通过任务栏搜索启动软件，不在桌面保留快捷方式；该规则由 Skill 提醒和验证，不由后台服务强制。
-_Avoid_: 后台监控、启动方式封锁
-
-**Fundamentals reminder**
-工具链 Skill 明确提醒用户：AI 不能替代计算机科学基础知识；基础工具优先通过 Scoop 安装，Scoop 无法提供时再使用 winget，并说明 winget 的路径限制。
-_Avoid_: 羞辱用户、暗示 AI 能替代基础能力
-
-**Directory ownership**
-`zen-desktop-zero` 创建并管理 `D:\data` 及分类目录，`zen-scoop-toolchain` 创建并管理 `D:\software\scoop`；两个插件不重复管理对方的目录。
-_Avoid_: 独立目录插件、重复初始化
-
-**Workstation plugin boundary**
-第一批只新增 `zen-desktop-zero` 与 `zen-scoop-toolchain` 两个 Plugin；前者负责桌面规范，后者负责基础工具链，均以用户主动调用的 Skill 运行。
-_Avoid_: 后台强制服务、为目录初始化单独建插件
-
-**Managed D roots**
-`D:\data` 与 `D:\software` 是规范化的工作区根目录；插件可以创建自己的子目录，但不拥有或清空根目录中的既有内容。
-_Avoid_: D 盘接管、根目录清空
-
-**D-drive requirement**
-依赖可用且可写的 D 盘；条件不满足时任务失败，不回退到其他盘符。
-_Avoid_: 自动换盘、备用安装盘
-
 ## Relationships
 
 - Seed Color 生成 Palette。
@@ -356,7 +278,5 @@ _Avoid_: 自动换盘、备用安装盘
 - Native foreground correction 属于终端宿主能力；Configuration match 与 Rendering acceptance 分别记录，SSH 的远端输出由本地宿主渲染。
 - Field inventory 定义应核查的 Appearance field，其中 Color field 是颜色与色调子集。
 - Plan 保存一次 Preview 的 Target 和 Mode 预期。
-- Preview 为需要配置实例发现的 Target 解析唯一 Active Target instance；Apply 与 Verify 不重新猜测路径。
+- Preview 为需要配置实例发现的 Target 解析唯一 Active Target instance（并对编辑器优先使用 C 盘标准配置目录，同时记录已存在的便携镜像目标）；Apply 与 Verify 不重新猜测路径。
 - Transaction 记录一次 Apply 及其后续 Verify 或 Rollback。
-- `zen-desktop-zero` 将 Resolved desktop 规范化为 Desktop zero；Desktop classification 将非快捷方式内容移动到 `D:\data`，Cleanup transaction 关联 Move rollback ledger。
-- `zen-scoop-toolchain` 检查 Core toolchain baseline；Scoop root 是首选安装位置，Toolchain source fallback 在 Scoop 失败时指向 winget。

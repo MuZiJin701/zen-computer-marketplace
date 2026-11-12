@@ -57,6 +57,8 @@ def _is_v1_payload(payload: object) -> bool:
             return False
         if any(not isinstance(theme.get(key), str) for key in _THEME_FIELDS):
             return False
+        if "accentSource" in theme and not isinstance(theme.get("accentSource"), str):
+            return False
         if not isinstance(theme.get("contrast"), (int, float)) or isinstance(theme.get("contrast"), bool):
             return False
         if not isinstance(theme.get("opaqueWindows"), bool):
@@ -109,6 +111,7 @@ def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[
         palette = palettes[mode]
         updates[table_name] = {
             "accent": palette["accent"],
+            "accentSource": "custom",
             "contrast": 100,
             "ink": palette["foreground"],
             "opaqueWindows": True,

@@ -209,10 +209,15 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
         status = instance.get("status")
         if status not in {"ok", "skipped"}:
             raise PlanIntegrityError(f"Plan target instance status is invalid for {plan_id}")
-        if target in {"vscode", "trae"} and not validate_editor_instance(target, instance):
+        if target in {"vscode", "trae", "antigravity-ide"} and not validate_editor_instance(target, instance):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
-        required_instance_keys = () if target == "windows" else ("settings_path",) if target == "terminal" else ("executable", "settings_path", "extensions_dir")
-        if target not in {"vscode", "trae"} and status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
+        required_instance_keys = (
+            () if target == "windows"
+            else ("settings_path",) if target == "terminal"
+            else ("config_path", "storage_path") if target == "antigravity"
+            else ("executable", "settings_path", "extensions_dir")
+        )
+        if target not in {"vscode", "trae", "antigravity-ide"} and status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
         if target == "terminal" and any(
             key in instance and not isinstance(instance.get(key), str)

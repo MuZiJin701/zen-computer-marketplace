@@ -110,6 +110,7 @@ def test_codex_v1_fixture_applies_verifies_and_restores_preserving_fields(tmp_pa
         theme = payload["desktop"][mode]
         palette = plan.palette_for(palette_mode)
         assert theme["accent"] == palette["accent"]
+        assert theme["accentSource"] == "custom"
         assert theme["ink"] == palette["foreground"]
         assert theme["surface"] == palette["surface"]
         assert theme["contrast"] == 100

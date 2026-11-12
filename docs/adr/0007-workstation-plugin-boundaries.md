@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-07-26
+Superseded by [ADR 0011](0011-single-plugin-antigravity-and-standard-editor-paths.md) — 2026-11-12 (originally Accepted — 2026-07-26)
 
 ## Context
 

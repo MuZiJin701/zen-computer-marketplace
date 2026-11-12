@@ -118,6 +118,24 @@ class TransactionStore:
             raise ValueError(f"Transaction ID mismatch for {transaction_id}")
         return record
 
+    def latest_transaction_id(self) -> str:
+        candidates: list[tuple[str, str]] = []
+        if self.root.is_dir():
+            for path in self.root.iterdir():
+                if not path.is_dir():
+                    continue
+                try:
+                    record = self.load(path.name)
+                except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, ValueError):
+                    continue
+                if record.status in {TransactionStatus.PENDING, TransactionStatus.ROLLED_BACK}:
+                    continue
+                candidates.append((record.created_at, record.id))
+        if not candidates:
+            raise FileNotFoundError("No restorable transaction found")
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1]
+
     def prune(self, keep: int = 5, preserve: set[str] | None = None) -> list[str]:
         if keep < 1:
             raise ValueError("keep must be at least 1")

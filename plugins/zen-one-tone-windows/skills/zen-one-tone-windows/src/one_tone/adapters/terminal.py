@@ -76,18 +76,14 @@ def _prediction_profile_block(plan: Plan) -> str:
     dark = plan.palette_for("dark")
     prediction_role = terminal_palette_key("InlinePrediction")
     selected_foreground_role = terminal_palette_key("ListPredictionSelected")
-    light_prediction = _checked_text_color(light, prediction_role, light["surface"])
+    _checked_text_color(light, prediction_role, light["surface"])
     dark_prediction = _checked_text_color(dark, prediction_role, dark["surface"])
     lines = [
         _PROFILE_START,
         "if ($env:WT_SESSION) {",
-        "  $oneToneLightMode = $false",
-        "  try {",
-        "    $oneToneLightMode = ((Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize' -Name AppsUseLightTheme -ErrorAction Stop).AppsUseLightTheme -eq 1)",
-        "  } catch { }",
-        f"  $oneToneInlinePrediction = if ($oneToneLightMode) {{ {_ansi_expression(light_prediction)} }} else {{ {_ansi_expression(dark_prediction)} }}",
-        f"  $oneToneListPrediction = if ($oneToneLightMode) {{ {_ansi_expression(light_prediction)} }} else {{ {_ansi_expression(dark_prediction)} }}",
-        f"  $oneToneListPredictionSelected = if ($oneToneLightMode) {{ {_ansi_expression(light[selected_foreground_role])} + {_ansi_expression(light['selection_background'], True)} }} else {{ {_ansi_expression(dark[selected_foreground_role])} + {_ansi_expression(dark['selection_background'], True)} }}",
+        f"  $oneToneInlinePrediction = {_ansi_expression(dark_prediction)}",
+        f"  $oneToneListPrediction = {_ansi_expression(dark_prediction)}",
+        f"  $oneToneListPredictionSelected = {_ansi_expression(dark[selected_foreground_role])} + {_ansi_expression(dark['selection_background'], True)}",
         "  Set-PSReadLineOption -Colors @{",
         "    InlinePrediction = $oneToneInlinePrediction",
         "    ListPrediction = $oneToneListPrediction",
@@ -179,12 +175,12 @@ def _scheme_colors(plan: Plan, mode: str | None = None) -> dict[str, str]:
 
 
 def _theme_colors(plan: Plan, mode: str | None = None, capabilities: Mapping[str, str] | None = None) -> dict[str, Any]:
-    palette = plan.palette_for(mode or plan.mode)
+    palette = plan.palette_for(mode or "dark")
     name = _THEME_NAME if mode is None else f"{_THEME_NAME} {mode.title()}"
     theme = {
         "name": name,
         "window": {
-            "applicationTheme": "system",
+            "applicationTheme": "dark",
             "frame": palette[terminal_palette_key("window.frame")],
             "unfocusedFrame": palette[terminal_palette_key("window.unfocusedFrame")],
         },
@@ -207,15 +203,14 @@ def _theme_colors(plan: Plan, mode: str | None = None, capabilities: Mapping[str
 
 
 def _generated_values(plan: Plan) -> dict[str, Any]:
-    palette = plan.palette_for(plan.mode)
-    theme = _theme_colors(plan)
+    theme = _theme_colors(plan, "dark")
     try:
         profile = _prediction_profile_block(plan)
     except ValueError:
         profile = None
     values = {
-        **_scheme_colors(plan),
-        "profile.colorScheme": dict(_SCHEME_MAPPING),
+        **_scheme_colors(plan, "dark"),
+        "profile.colorScheme": _SCHEME_MAPPING["dark"],
         **{name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items()
            if name not in {"window.frame", "window.unfocusedFrame"}},
         "window.applicationTheme": theme["window"]["applicationTheme"],
@@ -505,7 +500,7 @@ class TerminalAdapter:
             profile_color_keys = (*_palette_colors(plan), "cursorColor")
             settings["profiles"].setdefault("defaults", {})
             appearance_capabilities = self._appearance_capabilities()
-            profile_scheme = dict(_SCHEME_MAPPING) if appearance_capabilities["profile.colorScheme"] == "supported" else _SCHEME_MAPPING[plan.mode]
+            profile_scheme = _SCHEME_MAPPING["dark"]
             for profile in _profile_appearances(settings):
                 if not isinstance(profile, dict):
                     continue
@@ -542,7 +537,7 @@ class TerminalAdapter:
                 theme = {**previous, **theme}
                 themes.append(theme)
             settings["themes"] = themes
-            settings["theme"] = dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system"
+            settings["theme"] = _SCHEME_MAPPING["dark"] if appearance_capabilities["theme"] == "supported" else "dark"
             atomic_write_text(
                 self.settings_path,
                 json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
@@ -572,7 +567,7 @@ class TerminalAdapter:
             expected = _palette_colors(plan)
             self._discover_native_correction()
             appearance_capabilities = self._appearance_capabilities()
-            profile_scheme = dict(_SCHEME_MAPPING) if appearance_capabilities["profile.colorScheme"] == "supported" else _SCHEME_MAPPING[plan.mode]
+            profile_scheme = _SCHEME_MAPPING["dark"]
             native_supported = self._native_info["status"] == "supported"
             native_verified = not native_supported or all(
                 profile.get("adjustIndistinguishableColors") == "always" for profile in _profile_appearances(settings)
@@ -602,7 +597,7 @@ class TerminalAdapter:
                 )
                 and native_verified
                 and settings.get("profiles", {}).get("defaults", {}).get("colorScheme") == profile_scheme
-                and settings.get("theme") == (dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system")
+                and settings.get("theme") == (_SCHEME_MAPPING["dark"] if appearance_capabilities["theme"] == "supported" else "dark")
                 and all(paired_schemes.get(f"One Tone {mode.title()}") == _scheme_colors(plan, mode) for mode in ("light", "dark"))
                 and all(
                     isinstance(paired_themes.get(f"One Tone {mode.title()}"), dict)

@@ -93,12 +93,12 @@ TERMINAL_FIELD_MAPPINGS = (
 
 
 TERMINAL_APPEARANCE_FIELDS = {
-    "profile.colorScheme": ({"light": "One Tone Light", "dark": "One Tone Dark"}, (1, 16)),
+    "profile.colorScheme": ("One Tone Dark", (1, 0)),
     "profile.tabColor": ("remove", (1, 0)),
     "profile.useAcrylic": (False, (1, 0)),
     "profile.opacity": (100, (1, 12)),
     "profile.backgroundImage": ("", (1, 0)),
-    "theme": ({"light": "One Tone Light", "dark": "One Tone Dark"}, (1, 17)),
+    "theme": ("One Tone Dark", (1, 17)),
     "window.useMica": (False, (1, 17)),
     "window.frame": (None, (1, 22)),
     "window.unfocusedFrame": (None, (1, 22)),
@@ -125,6 +125,7 @@ _TARGET_MAPPINGS = {
     "terminal": TERMINAL_FIELD_MAPPINGS,
     "vscode": VSCODE_FIELD_MAPPINGS,
     "trae": VSCODE_FIELD_MAPPINGS,
+    "antigravity-ide": VSCODE_FIELD_MAPPINGS,
 }
 
 
@@ -167,12 +168,17 @@ def vscode_theme_colors(
         color = contextual.get(mapping.palette_key, palette.get(mapping.palette_key))
         if mapping.opacity_policy == "semantic-overlay":
             # Keep diff/merge regions distinct without reducing body-text readability.
-            endpoint = 255 if mode == "light" else 0
-            for weight in range(101):
-                candidate = "#" + "".join(f"{round(channel * (1 - weight / 100) + endpoint * weight / 100):02X}" for channel in parse_hex_color(color)) + "40"
-                background = composite(candidate)
-                if contrast_ratio(background, palette["surface"]) >= 1.2 and contrast_ratio(palette["foreground"], background) >= 7:
-                    color = candidate
+            endpoints = (0, 255) if mode == "light" else (255, 0)
+            matched = False
+            for endpoint in endpoints:
+                for weight in range(101):
+                    candidate = "#" + "".join(f"{round(channel * (1 - weight / 100) + endpoint * weight / 100):02X}" for channel in parse_hex_color(color)) + "40"
+                    background = composite(candidate)
+                    if contrast_ratio(background, palette["surface"]) >= 1.2 and contrast_ratio(palette["foreground"], background) >= 7:
+                        color = candidate
+                        matched = True
+                        break
+                if matched:
                     break
             else:
                 raise ValueError(f"{mapping.field} cannot preserve region and text contrast")

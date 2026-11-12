@@ -53,8 +53,8 @@ MODE_ACCENT_HUE_TOLERANCE = 0.04
 MODE_ACCENT_MIN_LIGHTNESS = 0.08
 MODE_ACCENT_MAX_LIGHTNESS = 0.92
 MODE_ACCENT_LIGHTNESS_DELTA = 0.55
-MODE_TONAL_LIGHTNESS_DELTA = 0.35
-MODE_LIGHT_SURFACE_MAX_LUMINANCE = 0.90
+MODE_TONAL_LIGHTNESS_DELTA = 0.75
+MODE_LIGHT_SURFACE_MAX_LUMINANCE = 0.96
 MODE_DARK_SURFACE_MIN_LUMINANCE = 0.005
 PREDICTION_MIN_CONTRAST = 4.5
 PREDICTION_MIN_DISTANCE = 0.20
@@ -247,7 +247,7 @@ def _readable_foreground(
     backgrounds: tuple[str, ...],
     minimum_ratio: float,
     hue: float = 0.58,
-    minimum_lightness: int = 4,
+    minimum_lightness: int = 1,
 ) -> str:
     candidates = [
         _hls_color(hue, lightness / 100, saturation)
@@ -395,9 +395,15 @@ def _contrast_safe_accent(
             -contrast_ratio(candidate, background),
         )
 
-    if preserve_identity:
-        return min(valid or candidates, key=theme_distance)
-    return max(valid or candidates, key=lambda candidate: contrast_ratio(candidate, background))
+    ordered = sorted(valid or candidates, key=theme_distance) if preserve_identity else sorted(
+        valid or candidates,
+        key=lambda candidate: contrast_ratio(candidate, background),
+        reverse=True,
+    )
+    for candidate in ordered:
+        if contrast_ratio(_readable_foreground((candidate,), 4.5), candidate) >= 4.5:
+            return candidate
+    return ordered[0]
 
 
 def _ensure_contrast(color: str, background: str, minimum_ratio: float) -> str:
@@ -413,20 +419,49 @@ def _ensure_contrast(color: str, background: str, minimum_ratio: float) -> str:
     return max(candidates, key=lambda candidate: contrast_ratio(candidate, background))
 
 
+def _semantic_text_color(
+    backgrounds: tuple[str, ...],
+    minimum_ratio: float,
+    hue: float,
+    target_chroma: float = 0.13,
+) -> str:
+    is_light = max(relative_luminance(background) for background in backgrounds) > 0.179
+    desired_lightness = 0.42 if is_light else 0.78
+    candidates: list[tuple[str, float, float, float]] = []
+    for lightness_step in range(10, 95):
+        for chroma in (0.15, 0.13, 0.11, 0.09, 0.07, 0.05):
+            candidate = _oklch_color(hue, lightness_step / 100, chroma)
+            if candidate in {"#000000", "#FFFFFF"}:
+                continue
+            actual_lightness, actual_chroma, actual_hue = _oklch_components(candidate)
+            ratio = min(contrast_ratio(candidate, background) for background in backgrounds)
+            if ratio >= minimum_ratio and _circular_hue_distance(actual_hue, hue) <= 0.05:
+                candidates.append((candidate, actual_lightness, actual_chroma, ratio))
+    if candidates:
+        return max(
+            candidates,
+            key=lambda item: (
+                -abs(item[2] - target_chroma),
+                -abs(item[1] - desired_lightness),
+            ),
+        )[0]
+    return _readable_foreground(backgrounds, minimum_ratio, hue=hue)
+
+
 def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     seed = _to_hex(parse_hex_color(seed_color))
     _lightness, seed_chroma, hue = _oklch_components(seed)
-    tonal_chroma = min(0.045, max(0.018, seed_chroma * 0.22))
+    tonal_chroma = min(0.038, max(0.014, seed_chroma * 0.20))
     if mode == "dark":
-        background = _oklch_color(hue, 0.24, tonal_chroma)
-        surface = _oklch_color(hue, 0.34, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.26, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.42, tonal_chroma)
+        background = _oklch_color(hue, 0.21, tonal_chroma)
+        surface = _oklch_color(hue, 0.31, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.23, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.39, tonal_chroma)
     else:
-        background = _oklch_color(hue, 0.44, tonal_chroma)
-        surface = _oklch_color(hue, 0.686, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.58, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.75, tonal_chroma)
+        background = _oklch_color(hue, 0.80, tonal_chroma)
+        surface = _oklch_color(hue, 0.885, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.81, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.955, tonal_chroma)
     background_foreground = _readable_foreground((background,), 7)
     foreground = _readable_foreground(
         (surface,), 7, minimum_lightness=2 if mode == "light" else 4
@@ -444,6 +479,7 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     border = _oklch_color(accent_hue, max(0.04, min(0.96, border_lightness)), accent_chroma * 0.72)
     if contrast_ratio(border, surface) < 3:
         border = accent
+    accent_text_hue = hue if seed_chroma >= 0.035 else 0.68
     error = "#F05252"
     warning = "#F3B95F"
     success = "#42D392"
@@ -456,17 +492,17 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
         "foreground": foreground,
         "muted_foreground": muted_foreground,
         "accent": accent,
-        "accent_text": _readable_foreground((surface,), 4.5),
+        "accent_text": _semantic_text_color((surface,), 4.5, accent_text_hue),
         "accent_foreground": _readable_foreground((accent,), 4.5),
         "selection_background": selection_background,
         "selection_foreground": _readable_foreground((selection_background,), 4.5),
         "border": border,
         "error": error,
-        "error_text": _readable_foreground((surface,), 4.5, hue=0.02),
+        "error_text": _semantic_text_color((surface,), 4.5, 0.07),
         "warning": warning,
-        "warning_text": _readable_foreground((surface,), 4.5, hue=0.12),
+        "warning_text": _semantic_text_color((surface,), 4.5, 0.19),
         "success": success,
-        "success_text": _readable_foreground((surface,), 4.5, hue=0.40),
+        "success_text": _semantic_text_color((surface,), 4.5, 0.42),
     }
     errors = validate_palette(palette, mode=mode)
     if errors:

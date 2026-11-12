@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .adapters import (
+    AntigravityAdapter,
     ChromeAdapter,
     CodexAdapter,
     TerminalAdapter,
@@ -19,6 +20,7 @@ from .adapters import (
     WindowsConfig,
 )
 from .editor_instance import EditorSpec, editor_spec_from_plan, resolve_editor_spec
+from .adapters.antigravity import _generated_values as _antigravity_generated_values
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
 from .adapters.chrome import _manifest
 from .adapters.codex import _theme_updates
@@ -30,7 +32,7 @@ from .plan import Plan, PlanIntegrityError, create_plan, load_plan, save_plan
 from .storage import json_safe
 from .transaction import TransactionStatus, TransactionStore, apply_plan, verify_plan
 
-DEFAULT_TARGETS = ("windows", "terminal", "vscode", "trae", "chatgpt-app", "chrome")
+DEFAULT_TARGETS = ("windows", "terminal", "vscode", "trae", "antigravity-ide", "chatgpt-app", "antigravity", "chrome")
 
 
 def _default_runtime_dir() -> Path:
@@ -69,8 +71,22 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--state-dir", type=Path, default=runtime_dir / "state")
     verify.add_argument("--output", choices=("human", "json"), default="human")
 
-    rollback = commands.add_parser("rollback", help="restore one transaction")
-    rollback.add_argument("transaction_id")
+    sync = commands.add_parser("sync", help="run Preview, Apply, and Verify in one step")
+    sync.add_argument("seed_color")
+    sync.add_argument(
+        "--targets",
+        default=",".join(DEFAULT_TARGETS),
+        help="comma-separated target names (default: all supported targets)",
+    )
+    sync.add_argument("--plans-dir", type=Path, default=runtime_dir / "plans")
+    sync.add_argument("--transactions-dir", type=Path, default=runtime_dir / "transactions")
+    sync.add_argument("--state-dir", type=Path, default=runtime_dir / "state")
+    sync.add_argument("--keep-transactions", type=int, default=5)
+    sync.add_argument("--output", choices=("human", "json"), default="human")
+
+    rollback = commands.add_parser("rollback", help="restore one transaction (defaults to latest)")
+    rollback.add_argument("transaction_id", nargs="?")
+    rollback.add_argument("--latest", action="store_true", help="restore the most recent transaction")
     rollback.add_argument("--transactions-dir", type=Path, default=runtime_dir / "transactions")
     rollback.add_argument("--state-dir", type=Path, default=runtime_dir / "state")
     rollback.add_argument("--output", choices=("human", "json"), default="human")
@@ -209,6 +225,18 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
             _optional_path("ONE_TONE_TRAE_EXTENSIONS"),
             state_dir / "trae-artifacts",
         )
+        antigravity_ide_defaults = [
+            (appdata / "Antigravity IDE/User/settings.json", userprofile / ".antigravity-ide/extensions", "standard"),
+            (appdata / "Antigravity/User/settings.json", userprofile / ".antigravity-ide/extensions", "standard"),
+        ]
+        antigravity_ide_spec = resolve_editor_spec(
+            "antigravity-ide",
+            _first_executable("ONE_TONE_ANTIGRAVITY_IDE_EXECUTABLE", "antigravity-ide", []),
+            antigravity_ide_defaults,
+            _optional_path("ONE_TONE_ANTIGRAVITY_IDE_SETTINGS"),
+            _optional_path("ONE_TONE_ANTIGRAVITY_IDE_EXTENSIONS"),
+            state_dir / "antigravity-ide-artifacts",
+        )
     else:
         vscode_spec = editor_spec_from_plan(
             "vscode",
@@ -220,7 +248,13 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
             target_instances.get("trae", {}),
             EditorSpec("trae", "", Path(), Path(), artifacts_dir=state_dir / "trae-artifacts"),
         )
+        antigravity_ide_spec = editor_spec_from_plan(
+            "antigravity-ide",
+            target_instances.get("antigravity-ide", {}),
+            EditorSpec("antigravity-ide", "", Path(), Path(), artifacts_dir=state_dir / "antigravity-ide-artifacts"),
+        )
     chatgpt_app_path = os.environ.get("ONE_TONE_CHATGPT_APP_THEME_CONFIG")
+    antigravity_instance = target_instances.get("antigravity") if target_instances is not None else None
     chrome_preferences = _configured_or_first(
         "ONE_TONE_CHROME_PREFERENCES",
         [localappdata / "Google/Chrome/User Data/Default/Preferences"],
@@ -242,8 +276,12 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
             registry[target] = UnsupportedAdapter(target)
         elif target == "trae":
             registry[target] = VSCodeFamilyAdapter(trae_spec)
+        elif target == "antigravity-ide":
+            registry[target] = VSCodeFamilyAdapter(antigravity_ide_spec)
         elif target == "chatgpt-app":
             registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None)
+        elif target == "antigravity":
+            registry[target] = AntigravityAdapter(target_instance=antigravity_instance)
         elif target == "chrome":
             registry[target] = ChromeAdapter(state_dir / "chrome-themes", chrome_preferences if chrome_preferences.is_file() else None)
         else:
@@ -255,7 +293,7 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
     values = {}
     for mode in ("light", "dark"):
         palette = plan.palette_for(mode)
-        if target in {"vscode", "trae"}:
+        if target in {"vscode", "trae", "antigravity-ide"}:
             generated = build_theme_json(plan, "One Tone", mode, baseline=plan.target_instances.get(target, {}).get("color_baseline", ""))["colors"]
         elif target == "chrome":
             theme = _manifest(plan, mode)["theme"]
@@ -263,10 +301,12 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
         elif target == "chatgpt-app":
             generated = {f"{table.removeprefix('desktop.')}.{key}": value for table, entries in _theme_updates(plan.palettes).items() for key, value in entries.items()}
             generated["appearanceTheme"] = "system"
+        elif target == "antigravity":
+            generated = _antigravity_generated_values(plan)
         elif target == "terminal":
             generated = {mapping.field: palette[mapping.palette_key] for mapping in TERMINAL_FIELD_MAPPINGS}
             generated.update({name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items() if value is not None})
-            generated["window.applicationTheme"] = "system"
+            generated["window.applicationTheme"] = "dark"
         elif target == "windows":
             generated = {**_theme_registry_values(plan), "wallpaper": {"color": plan.palette_for(plan.mode)["surface"]}}
         else:
@@ -360,7 +400,8 @@ def _apply(args: argparse.Namespace) -> int:
 
 def _rollback(args: argparse.Namespace) -> int:
     store = TransactionStore(args.transactions_dir)
-    record = store.load(args.transaction_id)
+    tx_id = store.latest_transaction_id() if args.latest or not args.transaction_id else args.transaction_id
+    record = store.load(tx_id)
     target_instances = {
         target: metadata["target_instance"]
         for target, metadata in record.target_metadata.items()
@@ -374,6 +415,50 @@ def _rollback(args: argparse.Namespace) -> int:
     print(f"Transaction ID: {restored.id}")
     print(f"Status: {restored.status.value}")
     return 0 if restored.status == TransactionStatus.ROLLED_BACK else 1
+
+
+def _sync(args: argparse.Namespace) -> int:
+    targets = _target_names(args.targets)
+    preview_adapters = build_target_adapters(targets, args.state_dir)
+    detected = {target: adapter.detect() for target, adapter in preview_adapters.items()}
+    target_instances = {
+        target: adapter.target_instance()
+        for target, adapter in preview_adapters.items()
+        if hasattr(adapter, "target_instance")
+    }
+    for target, result in detected.items():
+        if result.status == "skipped":
+            target_instances[target] = {"status": "skipped", "reason": result.message}
+    plan = create_plan(args.seed_color, targets, target_instances=target_instances)
+    save_plan(plan, args.plans_dir)
+    apply_adapters = build_target_adapters(plan.targets, args.state_dir, plan.target_instances)
+    store = TransactionStore(args.transactions_dir)
+    record = apply_plan(plan, apply_adapters, store, confirm=True)
+    removed = store.prune(keep=args.keep_transactions, preserve={record.id})
+    verified = verify_plan(plan, apply_adapters)
+    verify_status = _aggregate_status(verified)
+    ok = record.status in {TransactionStatus.APPLIED, TransactionStatus.PARTIAL} and verify_status in {"ok", "partial"}
+    if args.output == "json":
+        _emit(
+            _record_payload(
+                "sync",
+                record,
+                {
+                    "verify_status": verify_status,
+                    "verify_targets": [_adapter_result_payload(asdict(verified[target])) for target in plan.targets],
+                    "pruned_transactions": removed,
+                },
+            ),
+            args.output,
+        )
+        return 0 if ok else 1
+    print(f"Plan ID: {plan.id}")
+    print(f"Transaction ID: {record.id}")
+    print(f"Status: {record.status.value}")
+    print(f"Verify: {verify_status.upper()}")
+    if removed:
+        print(f"Pruned transactions: {len(removed)}")
+    return 0 if ok else 1
 
 
 def _aggregate_status(results) -> str:
@@ -425,6 +510,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _apply(args)
         if args.command == "verify":
             return _verify(args)
+        if args.command == "sync":
+            return _sync(args)
         return _rollback(args)
     except (FileNotFoundError, PlanIntegrityError, ValueError, OSError) as error:
         if getattr(args, "output", "human") == "json":

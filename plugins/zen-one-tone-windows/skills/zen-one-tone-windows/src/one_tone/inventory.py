@@ -7,25 +7,41 @@ from .field_mappings import CHROME_COLOR_ROLES, CHROME_TINT_ROLES, TERMINAL_APPE
 FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
     "windows": (
         "EnableTransparency", "wallpaper", "AccentPalette", "StartTaskbarColorPrevalence", "TitleBarColorPrevalence",
-        "AccentColorMenu", "StartColorMenu", "AccentColor", "ColorizationColor", "ColorizationAfterglow",
-        "AppsUseLightTheme", "SystemUsesLightTheme", "AutoColorization", "highContrast",
+        "AccentColorMenu", "StartColorMenu", "AccentColor", "AccentColorInactive", "ColorizationColor", "ColorizationAfterglow",
+        "Background", "AppsUseLightTheme", "SystemUsesLightTheme", "AutoColorization", "highContrast",
     ),
     "chatgpt-app": (
         "appearanceTheme",
         "appearanceLightChromeTheme.surface", "appearanceLightChromeTheme.ink", "appearanceLightChromeTheme.accent",
+        "appearanceLightChromeTheme.accentSource",
         "appearanceLightChromeTheme.contrast", "appearanceLightChromeTheme.opaqueWindows", "appearanceLightChromeTheme.fonts",
         "appearanceLightChromeTheme.semanticColors.diffAdded",
         "appearanceLightChromeTheme.semanticColors.diffRemoved", "appearanceLightChromeTheme.semanticColors.skill",
         "appearanceDarkChromeTheme.surface", "appearanceDarkChromeTheme.ink", "appearanceDarkChromeTheme.accent",
+        "appearanceDarkChromeTheme.accentSource",
         "appearanceDarkChromeTheme.contrast", "appearanceDarkChromeTheme.opaqueWindows", "appearanceDarkChromeTheme.fonts",
         "appearanceDarkChromeTheme.semanticColors.diffAdded",
         "appearanceDarkChromeTheme.semanticColors.diffRemoved", "appearanceDarkChromeTheme.semanticColors.skill",
+    ),
+    "antigravity": (
+        "userSettings.themeMode",
+        "userSettings.customThemeSeedsLight.background",
+        "userSettings.customThemeSeedsLight.primary",
+        "userSettings.customThemeSeedsLight.foregroundOverride",
+        "userSettings.customThemeSeedsLight.primaryForegroundOverride",
+        "userSettings.customThemeSeedsLight.codeForegroundOverride",
+        "userSettings.customThemeSeedsDark.background",
+        "userSettings.customThemeSeedsDark.primary",
+        "userSettings.customThemeSeedsDark.foregroundOverride",
+        "userSettings.customThemeSeedsDark.primaryForegroundOverride",
+        "userSettings.customThemeSeedsDark.codeForegroundOverride",
+        "hubSurfaceBackgroundColor",
     ),
     "chrome": (*CHROME_COLOR_ROLES, *(f"tints.{field}" for field in CHROME_TINT_ROLES),
                "properties.ntp_background_alignment", "properties.ntp_background_repeat", "properties.ntp_logo_alternate"),
 }
 
-for _target in ("terminal", "vscode", "trae"):
+for _target in ("terminal", "vscode", "trae", "antigravity-ide"):
     FIELD_INVENTORY[_target] = tuple(mapping.field for mapping in field_mappings_for(_target))
 
 PRESERVED_FIELDS = {
@@ -39,8 +55,10 @@ PRESERVED_FIELDS = {
                "workbench.preferredHighContrastColorTheme", "workbench.preferredHighContrastLightColorTheme"),
     "chrome": ("content.fonts", "window.opacity"),
     "chatgpt-app": ("ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio"),
+    "antigravity": ("userSettings.unrelated",),
 }
 PRESERVED_FIELDS["trae"] = (*PRESERVED_FIELDS["vscode"], "private.aiPanel.colors")
+PRESERVED_FIELDS["antigravity-ide"] = (*PRESERVED_FIELDS["vscode"], "private.aiPanel.colors")
 FIELD_INVENTORY["terminal"] = tuple(dict.fromkeys((*FIELD_INVENTORY["terminal"], *TERMINAL_APPEARANCE_FIELDS)))
 for _target, _fields in PRESERVED_FIELDS.items():
     FIELD_INVENTORY[_target] = tuple(dict.fromkeys((*FIELD_INVENTORY[_target], *_fields)))
@@ -51,7 +69,9 @@ _SOURCES = {
     "terminal": "https://github.com/microsoft/terminal/blob/v1.25.2733.0/doc/cascadia/profiles.schema.json",
     "vscode": VSCODE_FIELD_DATA["source"],
     "trae": VSCODE_FIELD_DATA["source"],
+    "antigravity-ide": VSCODE_FIELD_DATA["source"],
     "chatgpt-app": "verified-v1-runtime-schema",
+    "antigravity": "verified-antigravity-config-v1",
     "chrome": "https://github.com/chromium/chromium/blob/77270bd36581caca2ab02fe4526cc921560ad089/chrome/browser/themes/browser_theme_pack.cc",
 }
 _BASELINES = {
@@ -59,7 +79,9 @@ _BASELINES = {
     "terminal": "Windows Terminal documented profile schema",
     "vscode": "VS Code 1.140.0 registered colors and pinned public documentation",
     "trae": "Workbench 1.107.1 / 1.140.0 registrations intersected with pinned public documentation",
+    "antigravity-ide": "Workbench 1.107.1 / 1.140.0 registrations intersected with pinned public documentation",
     "chatgpt-app": "verified ChatGPT App v1 color schema",
+    "antigravity": "verified Antigravity 2.0 config.json and app_storage.json schema",
     "chrome": "Chrome Manifest V3 theme schema",
 }
 _INVENTORY_VERSION = "2026-10-05.v4"
@@ -69,7 +91,9 @@ _REFERENCE_THEMES = {
     "terminal": "Windows Terminal built-in Light scheme",
     "vscode": "VS Code Light Modern 1.140.0",
     "trae": "TRAE Workbench 1.107.1; installed version discovered in Preview",
+    "antigravity-ide": "Antigravity IDE Workbench 1.107.1 / 1.140.0; installed version discovered in Preview",
     "chatgpt-app": "ChatGPT App verified v1 Light theme table",
+    "antigravity": "Antigravity 2.0 customThemeSeedsLight / customThemeSeedsDark",
     "chrome": "Chrome Manifest V3 Light theme",
 }
 _EVIDENCE_SOURCES = {
@@ -77,7 +101,9 @@ _EVIDENCE_SOURCES = {
     "terminal": "official schema plus built-in Light scheme",
     "vscode": "installed built-in Light theme plus official schema",
     "trae": "installed built-in Light theme plus official schema",
+    "antigravity-ide": "installed built-in Light theme plus official schema",
     "chatgpt-app": "verified ChatGPT App runtime schema",
+    "antigravity": "verified Antigravity runtime config and storage schema",
     "chrome": "official schema",
 }
 _LIST_SELECTION_FIELDS = frozenset({
@@ -142,7 +168,7 @@ def _field_region(target: str, name: str) -> str:
         return "taskbar" if "taskbar" in lowered or "start" in lowered else "windows shell"
     if target == "terminal":
         return "terminal tabs" if "tab" in lowered else "terminal"
-    if target in {"vscode", "trae"}:
+    if target in {"vscode", "trae", "antigravity-ide"}:
         if lowered.startswith("gitdecoration."):
             return "workbench git decorations"
         return "editor" if lowered.startswith("editor") or lowered.startswith("terminal") else "workbench"
@@ -150,6 +176,8 @@ def _field_region(target: str, name: str) -> str:
         return "browser chrome"
     if target == "chatgpt-app":
         return "ChatGPT App"
+    if target == "antigravity":
+        return "Antigravity"
     return target
 
 
@@ -191,8 +219,8 @@ def _field_role(name: str) -> str:
 def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
     """Return the evidence-backed, user-readable Field inventory for a Target."""
     mappings = {mapping.field: mapping for mapping in field_mappings_for(target)}
-    baseline = "1.107.1" if target == "trae" else "1.140.0"
-    color_statuses = vscode_capabilities(baseline) if target in {"vscode", "trae"} else {}
+    baseline = "1.107.1" if target in {"trae", "antigravity-ide"} else "1.140.0"
+    color_statuses = vscode_capabilities(baseline) if target in {"vscode", "trae", "antigravity-ide"} else {}
     entries = []
     for name in inventory_for(target):
         mapping = mappings.get(name)
@@ -200,7 +228,7 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
         capability = (
             "unsupported" if name in {"window.opacity", "ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio", "private.aiPanel.colors"}
             else "not-applicable" if preserved or name in {"properties.ntp_background_alignment", "properties.ntp_background_repeat"}
-            else color_statuses.get(name, "unsupported") if target in {"vscode", "trae"}
+            else color_statuses.get(name, "unsupported") if target in {"vscode", "trae", "antigravity-ide"}
             else "supported"
         )
         text_class = mapping.text_class if mapping else _text_class(name)
@@ -211,7 +239,7 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "field_category": (
                     "theme_structure" if name.endswith(".fonts")
                     else "font" if "font" in name.casefold()
-                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "appearanceTheme"} or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
+                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "appearanceTheme", "userSettings.themeMode"} or name.endswith(".accentSource") or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
                     else "color"
                 ),
                 "visual_role": mapping.visual_role if mapping else _field_role(name),
@@ -271,7 +299,7 @@ def expected_capabilities(targets: tuple[str, ...], target_instances=None) -> di
     result = {target: {entry["technical_field"]: entry["capability_status"] for entry in field_inventory_for(target)} for target in targets}
     for target in targets:
         instance = (target_instances or {}).get(target, {})
-        if target in {"vscode", "trae"}:
+        if target in {"vscode", "trae", "antigravity-ide"}:
             result[target].update(vscode_capabilities(instance.get("color_baseline", "")))
         elif target == "terminal":
             result[target].update(terminal_capabilities(instance))

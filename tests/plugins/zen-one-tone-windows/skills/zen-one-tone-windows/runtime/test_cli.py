@@ -186,13 +186,13 @@ def test_vscode_adapter_accepts_environment_path_overrides(tmp_path, monkeypatch
     assert adapter.spec.extensions_dir == extensions
 
 
-def test_vscode_adapter_prefers_generic_portable_layout_over_default_user_paths(tmp_path, monkeypatch):
+def test_vscode_adapter_prefers_standard_user_paths_and_mirrors_portable_layout(tmp_path, monkeypatch):
     executable = tmp_path / "portable" / "bin" / "code.cmd"
     executable.parent.mkdir(parents=True)
     executable.write_text("@echo off", encoding="utf-8")
-    package = executable.parent.parent / "resources/app/package.json"
+    package = executable.parent.parent / "69047191fc" / "resources/app/package.json"
     package.parent.mkdir(parents=True)
-    package.write_text('{"version":"1.140.0"}', encoding="utf-8")
+    package.write_text('{"version":"1.146.0"}', encoding="utf-8")
     portable_settings = tmp_path / "portable" / "data" / "user-data" / "User" / "settings.json"
     portable_extensions = tmp_path / "portable" / "data" / "extensions"
     portable_settings.parent.mkdir(parents=True)
@@ -201,9 +201,11 @@ def test_vscode_adapter_prefers_generic_portable_layout_over_default_user_paths(
 
     userprofile = tmp_path / "user"
     appdata = userprofile / "AppData" / "Roaming"
-    (appdata / "Code/User").mkdir(parents=True)
-    (appdata / "Code/User/settings.json").write_text("{}", encoding="utf-8")
-    (userprofile / ".vscode/extensions").mkdir(parents=True)
+    standard_settings = appdata / "Code/User/settings.json"
+    standard_extensions = userprofile / ".vscode/extensions"
+    standard_settings.parent.mkdir(parents=True)
+    standard_settings.write_text("{}", encoding="utf-8")
+    standard_extensions.mkdir(parents=True)
     monkeypatch.setenv("ONE_TONE_VSCODE_EXECUTABLE", str(executable))
     monkeypatch.delenv("ONE_TONE_VSCODE_SETTINGS", raising=False)
     monkeypatch.delenv("ONE_TONE_VSCODE_EXTENSIONS", raising=False)
@@ -213,9 +215,15 @@ def test_vscode_adapter_prefers_generic_portable_layout_over_default_user_paths(
     adapter = build_target_adapters(("vscode",), tmp_path / "state")["vscode"]
 
     assert adapter.detect().status == "ok"
-    assert adapter.spec.settings_path == portable_settings
-    assert adapter.spec.extensions_dir == portable_extensions
-    assert adapter.target_instance()["source"] == "portable"
+    assert adapter.spec.settings_path == standard_settings
+    assert adapter.spec.extensions_dir == standard_extensions
+    assert adapter.spec.color_baseline == "1.140.0"
+    assert adapter.spec.mirror_targets == ((portable_settings, portable_extensions),)
+    assert adapter.target_instance()["source"] == "standard"
+    assert adapter.target_instance()["mirror_targets"] == [{
+        "settings_path": str(portable_settings),
+        "extensions_dir": str(portable_extensions),
+    }]
 
 
 def test_vscode_adapter_skips_ambiguous_portable_instances_without_creating_paths(tmp_path, monkeypatch):
@@ -320,3 +328,44 @@ def test_terminal_adapter_derives_scoop_persist_settings_from_shim(tmp_path, mon
     adapter = build_target_adapters(("terminal",), tmp_path / "state")["terminal"]
 
     assert adapter.settings_path == settings
+
+
+def test_sync_and_rollback_latest_round_trip(tmp_path, capsys, monkeypatch):
+    config_path = tmp_path / ".gemini" / "config" / "config.json"
+    storage_path = tmp_path / "Antigravity" / "app_storage.json"
+    config_path.parent.mkdir(parents=True)
+    storage_path.parent.mkdir(parents=True)
+    config_path.write_text(json.dumps({"userSettings": {"themeMode": "THEME_MODE_DARK", "keep": True}}), encoding="utf-8")
+    storage_path.write_text(json.dumps({"hubSurfaceBackgroundColor": "#111111", "other": "ok"}), encoding="utf-8")
+    original_config = config_path.read_bytes()
+    original_storage = storage_path.read_bytes()
+    monkeypatch.setenv("ONE_TONE_ANTIGRAVITY_CONFIG", str(config_path))
+    monkeypatch.setenv("ONE_TONE_ANTIGRAVITY_STORAGE", str(storage_path))
+
+    plans_dir = tmp_path / "plans"
+    tx_dir = tmp_path / "transactions"
+    state_dir = tmp_path / "state"
+
+    assert main([
+        "sync", "#22C55E", "--targets", "antigravity",
+        "--plans-dir", str(plans_dir),
+        "--transactions-dir", str(tx_dir),
+        "--state-dir", str(state_dir),
+        "--output", "json",
+    ]) == 0
+    sync_payload = json.loads(capsys.readouterr().out)
+    assert sync_payload["command"] == "sync"
+    assert sync_payload["status"] == "APPLIED"
+    assert sync_payload["verify_status"] == "ok"
+
+    assert main([
+        "rollback", "--latest",
+        "--transactions-dir", str(tx_dir),
+        "--state-dir", str(state_dir),
+        "--output", "json",
+    ]) == 0
+    rollback_payload = json.loads(capsys.readouterr().out)
+    assert rollback_payload["command"] == "rollback"
+    assert rollback_payload["status"] == "ROLLED_BACK"
+    assert config_path.read_bytes() == original_config
+    assert storage_path.read_bytes() == original_storage

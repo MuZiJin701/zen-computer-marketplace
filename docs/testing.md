@@ -7,45 +7,31 @@ Run from the repository root:
 ~~~powershell
 uv run pytest
 uv run --project plugins/zen-one-tone-windows/skills/zen-one-tone-windows one-tone --help
-uv run --project plugins/zen-desktop-zero/skills/zen-desktop-zero desktop-zero --help
-uv run --project plugins/zen-scoop-toolchain/skills/zen-scoop-toolchain scoop-toolchain --help
 git diff --check
 ~~~
 
-The root project is a test harness. Each Skill owns its launcher and runtime; tests remain outside distributable Skills and mirror the Marketplace → Plugin → Skill hierarchy. Default workstation tests use temporary directories and fakes; real desktop deletion, elevation, process termination, Scoop installation and winget installation remain risk-documented manual tests. Runtime tests for each Skill live under the matching Plugin and Skill test directory.
-
-## Required coverage for workstation Plugins
-
-- Marketplace and Plugin tests verify both workstation Plugin envelopes, their one-Skill package shape and Marketplace registration.
-- Desktop zero tests cover Resolved desktop discovery, redirected desktop paths, Public Desktop exclusion, D-drive/data preflight, deterministic categories, shortcut deletion, collision suffixes, locked-item partial results and Preview read-only behavior.
-- Desktop zero tests cover constrained repair: only confirmed non-system locking processes may be attempted, while unknown and system processes are never terminated.
-- Desktop zero tests cover Verify and explicit transaction-ID rollback for moved files; deleted shortcuts remain non-restorable.
-- Scoop toolchain tests cover existing-tool preservation, fixed `D:\software\scoop` preflight, Scoop bootstrap, Scoop-first installation, winget fallback, path-conformity reporting and no-uninstall behavior.
-- Both workflows test explicit confirmation, structured `ok`, `partial`, `failed` and `skipped` aggregation, safe path validation and atomic Plan persistence.
-- Default tests use fake desktop, process and installer backends. Real desktop deletion, process termination, elevation, Scoop and winget operations are separately marked and risk-documented.
+The root project is a test harness. The `zen-one-tone-windows` Skill owns its launcher and runtime; tests remain outside the distributable Skill and mirror the Marketplace → Plugin → Skill hierarchy.
 
 ## Required coverage for the theme-field work
 
 - Palette tests cover both light and dark modes, exact Seed Color anchor preservation, distinct surface roles, passive region separation and interactive boundary separation.
 - Palette tests also cover appearance-safe Tonal surfaces, Theme anchor hue retention, bounded chroma, no unjustified pure-black/pure-white ordinary roles and extreme Seed Colors such as red, yellow, cyan and near-black.
-- Palette and Plan tests also verify Mode coherence: explicit Light/Dark Accents retain one Seed Color identity, corresponding large-area roles stay within `0.35` OKLCH lightness difference, ordinary surfaces avoid near-white/near-black collapse, and incoherent persisted Mode pairs are rejected.
+- Palette and Plan tests also verify Mode coherence: explicit Light/Dark Accents retain one Seed Color identity, corresponding large-area roles stay within `0.75` OKLCH lightness difference, ordinary surfaces avoid near-white/near-black collapse, and incoherent persisted Mode pairs are rejected.
 - Light Mode dense primary text uses an opaque primary role and `7:1` contrast on its actual surface; muted, transparent and semantic state colors remain limited to secondary or stateful fields and use the existing `4.5:1` target where applicable.
 - Plan tests cover mode Palettes, field capability expectations and stable Plan hashes.
-- Windows tests cover safe registry and wallpaper outputs, preserved mode/automatic-color/high-contrast settings, field-level partial results, and `AccentPalette` white-glyph contrast.
-- Windows Terminal tests cover paired Schemes, Profile `colorScheme` mappings, all profile entries, all documented color fields, Tab/Tab Row/window fields and system mode selection.
-- Windows Terminal tests also cover optional PSReadLine prediction capability discovery, supported `InlinePrediction`/list prediction fields, Windows Terminal session guarding, Profile preservation and local rollback.
-- VS Code and TRAE tests cover the standard public Workbench field inventory, Git decoration fields, exact contributed Light/Dark labels, enabled auto-detect settings and discoverable TRAE-specific fields.
-- VS Code/TRAE instance tests cover standard and portable layouts, multiple-instance ambiguity, read-only path discovery, Plan-persisted paths, registration evidence, and non-zero CLI results with successful installation evidence.
-- ChatGPT App tests cover every verified v1 color field plus fonts-table repair, opaque-window and maximum-contrast settings in both theme tables, while preserving unknown configuration keys and existing font values.
+- Windows tests cover safe registry and wallpaper outputs (`AccentColorInactive`, `Background`, `AccentPalette`, etc.), preserved mode/automatic-color/high-contrast settings, field-level partial results, and `AccentPalette` white-glyph contrast.
+- Windows Terminal tests cover paired Schemes, default `One Tone Dark` (`applicationTheme = dark`), Profile `colorScheme` mappings, all profile entries, all documented color fields, Tab/Tab Row/window fields, and optional PSReadLine prediction capability discovery.
+- VS Code, TRAE and Antigravity IDE tests cover the standard public Workbench field inventory (`window.activeBorder`, `window.inactiveBorder`, `editor.selectionForeground`, `gauge.*`), Git decoration fields, exact contributed Light/Dark labels, enabled auto-detect settings, standard C-drive priority and portable `data/` mirror synchronization.
+- ChatGPT App (`chatgpt-app`) tests cover every verified v1 color field (`accentSource = custom`, `contrast = 100`, `opaqueWindows = true`) plus fonts-table repair in both theme tables, while preserving unknown configuration keys and existing font values.
+- Antigravity (`antigravity`) tests cover `~/.gemini/config/config.json` (`userSettings.themeMode`, `customThemeSeedsLight`, `customThemeSeedsDark`) and `%APPDATA%\Antigravity\app_storage.json` (`hubSurfaceBackgroundColor`) across detect, snapshot, apply, verify and rollback.
 - Chrome tests independently cover the fixed parser's 24 colors, 6 tints and applicable properties in exactly two unpacked Light/Dark directories and internal ZIPs; invalid fields and image-only properties are absent. Drift/missing artifacts fail read-only Verify; activation remains manual.
-- Transaction tests retain per-Target Snapshot, operation persistence, compensation and rollback behavior and cover JSON-safe binary report values.
-- CLI tests cover parseable JSON-mode Apply and Verify responses when nested report metadata contains binary values.
+- Transaction and CLI tests cover `sync`, `rollback --latest`, per-Target Snapshot, operation persistence, compensation, rollback behavior and JSON-safe binary report values.
 
 ## Test style
 
-Public coverage regressions use an independent fixture with 971 documented VS Code IDs, 35 alpha constraints and source-derived 1.107.1/1.140.0 registrations; generated sets must exactly match the applicable intersections, excluding five Windows/ordinary-theme inapplicable fields. Numerical regressions check real composited find backgrounds, button/input hover pairs, focused icons, distinguishable Diff/Merge regions and opaque primary text. Font, high-contrast, cursor/glyph and unknown preferences remain unchanged. Runtime JSON is required in independently distributed Skill packages.
+Public coverage regressions use an independent fixture with 971 documented VS Code IDs, 35 alpha constraints and source-derived 1.107.1/1.140.0 registrations; generated sets must exactly match the applicable intersections, excluding two high-contrast-only fields (`contrastBorder`, `contrastActiveBorder`). Numerical regressions check real composited find backgrounds, button/input hover pairs, focused icons, distinguishable Diff/Merge regions and opaque primary text. Font, high-contrast, cursor/glyph and unknown preferences remain unchanged. Runtime JSON is required in independently distributed Skill packages.
 
-Windows regressions include mixed App/Shell modes, active/unknown high contrast, simulated API failure, actual Shell taskbar capability, transparency drift and absent-value restoration. Terminal covers version/platform gates, solid defaults/Profile/unfocused policies, removal of fixed tabColor and invalid Scheme selectionForeground, preservation of custom theme preferences and only two native variants. ChatGPT tests repair missing semantic/font structures and verify system appearance plus every managed field. Editor discovery tests forwarded/versioned launchers, unknown baselines and exact contribution paths/types/labels; complete non-frame/token drift fails Verify without writes.
+Windows regressions include mixed App/Shell modes, active/unknown high contrast, simulated API failure, actual Shell taskbar capability, transparency drift and absent-value restoration. Terminal covers version/platform gates, solid defaults/Profile/unfocused policies, removal of fixed tabColor and invalid Scheme selectionForeground, preservation of custom theme preferences and two native variants with `One Tone Dark` selected by default. ChatGPT tests repair missing semantic/font structures and verify system appearance plus every managed field. Editor discovery tests forwarded/versioned launchers, commit-subdirectory `package.json`, unknown baselines, standard C-drive priority + portable mirror, and exact contribution paths/types/labels; complete non-frame/token drift fails Verify without writes.
 
 Plan/Transaction regressions reject old appearance policies and changed field contracts before Transaction/Snapshot creation while keeping historical Rollback independent. Preview must report actual capability statuses and generated values. Python compilation is checked with `uv run python -m compileall -q plugins/zen-one-tone-windows/skills/zen-one-tone-windows/src`; no type checker or new dependency is installed. Source and visual limits are recorded in [field evidence](theme-field-coverage-evidence.md).
 
@@ -55,7 +41,6 @@ Tests cross the highest available Seam and assert external behavior:
 - JSON, TOML and ZIP artifacts, not internal dictionary construction.
 - AdapterResult status and field capability payloads, not logging text.
 - Temporary files and fake registry/desktop backends for default tests.
-- Temporary files and fake process/package-manager backends for workstation workflows.
 - Real installed applications only in separately marked, risk-documented tests.
 
 A passing fixture test is not proof that a real desktop Target renders every public field. Manual screenshots remain required for visual acceptance.
@@ -76,4 +61,4 @@ Get-Content -Raw .\scripts\terminal_readability_sample.py | ssh <existing-host> 
 
 For each host × local/real SSH × Light/Dark × all three Seeds, also exercise the actual Codex CLI and the identified editor/version, including body, syntax, path, version, status bar, placeholder, input and selected text. Record host/program versions, actual displayed foreground/background, contrast and visual pass/fail/untested. Host correction does not guarantee those thresholds, and dim/selection compositing requires final rendered colors. Configuration `verified`, diagnostic transport and captured output never substitute for this matrix.
 
-Real theme changes still follow Preview → confirmed Plan Apply → read-only Verify → explicit Transaction Rollback. Do not switch the Windows theme mode automatically. The App embedded terminal's full ANSI/native correction is unsupported because its verified user schema exposes no entry point. An unidentified local program, broken/missing remote Codex CLI or unavailable visual check remains untested; no complete acceptance claim is allowed. Current measurements and remaining gates are in [the evidence record](terminal-readability-evidence.md). No type checker is configured; Python compilation is checked alongside fixture tests without installing a new dependency.
+Real theme changes follow `sync` or Preview → confirmed Plan Apply → read-only Verify → Transaction Rollback. Do not switch the Windows theme mode automatically. The App embedded terminal's full ANSI/native correction is unsupported because its verified user schema exposes no entry point. An unidentified local program, broken/missing remote Codex CLI or unavailable visual check remains untested; no complete acceptance claim is allowed. Current measurements and remaining gates are in [the evidence record](terminal-readability-evidence.md). No type checker is configured; Python compilation is checked alongside fixture tests without installing a new dependency.

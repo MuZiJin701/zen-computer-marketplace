@@ -2,20 +2,22 @@
 
 | 目标 | 范围 | 实际能力和保留项 |
 | --- | --- | --- |
-| `windows` | Windows 10 22H2+（build >=19045）/Windows 11 22H2+（build >=22621）；壁纸、Shell Accent、Start/Taskbar、标题栏、DWM、透明效果 | 确认 Apply 写 EnableTransparency=0；壁纸为 Seed 派生 Tonal surface；Shell Accent 保护固定白色图标 >=4.5。App/Shell 模式分别读取并保持，高对比度 API 开启/未知时 skipped；浅色/未知 Shell 的任务栏颜色 unsupported，自动取色可能覆盖固定 Accent，报告 partial |
-| `terminal` | defaults、所有 Profile、已有 unfocusedAppearance；两套 Scheme/ANSI、光标、选择背景、Tab/Tab Row/window 和可选 pwsh/PSReadLine 预测 | 按 Preview 冻结的版本应用实心和原生跟随；保留字体、padding、字形、光标形状、Tab 偏好、rainbowFrame 和未知键；未知能力保留并 partial；配置回读不证明渲染阈值 |
-| `vscode` | 完整固定公开颜色清单与实际 Workbench 注册字段交集；菜单、通知、Quick Input、Widget、Diff、Chat、Merge、Notebook、Debug、Testing、ANSI 与语义/语法高亮 | 已核查 Workbench 1.140.0/1.107.1；未知版本安全 skipped。使用精确贡献标签和原生 autoDetect；保留字体、光标形状、终端渲染和高对比度偏好 |
-| `trae` | 实际 Workbench 版本对应的同一公开清单；公开 Git decoration 等 | 产品版本不替代 Workbench 注册基线；私有 AI 字段 unsupported，不猜测替代键。配置和扩展使用 Plan 的实例路径 |
-| `chatgpt-app` | 已验证 config.toml v1 两个 Light/Dark 主题表及 appearanceTheme | appearanceTheme=system，contrast=100、opaqueWindows=true；完整 semanticColors；补齐缺失 fonts table，不发明字体值；未知布局安全 skipped。UI 字号、sidebar 透明度和内嵌终端无已验证入口，unsupported；手动重启 |
+| `windows` | Windows 10 22H2+（build >=19045）/Windows 11 22H2+（build >=22621）；壁纸、Shell Accent、Start/Taskbar、标题栏、DWM（含 `AccentColorInactive`）、`Control Panel\Colors\Background`、透明效果 | 确认 Apply 写 EnableTransparency=0；壁纸为 Seed 派生 Tonal surface；Shell Accent 保护固定白色图标 >=4.5。App/Shell 模式分别读取并保持，高对比度 API 开启/未知时 skipped；浅色/未知 Shell 的任务栏颜色 unsupported，自动取色可能覆盖固定 Accent，报告 partial |
+| `terminal` | defaults、所有 Profile、已有 unfocusedAppearance；两套 Scheme/ANSI、光标、选择背景、Tab/Tab Row/window 和可选 pwsh/PSReadLine 预测 | 同时注册 `One Tone Light` 与 `One Tone Dark`，默认绑定 `One Tone Dark`（`applicationTheme=dark`）；按 Preview 冻结的版本应用实心策略；保留字体、padding、字形、光标形状、Tab 偏好、rainbowFrame 和未知键；未知能力保留并 partial；配置回读不证明渲染阈值 |
+| `vscode` | 完整固定公开颜色清单与实际 Workbench 注册字段交集；菜单、通知、Quick Input、Widget、Diff、Chat、Merge、Notebook、Debug、Testing、Gauge、窗口边框、ANSI 与语义/语法高亮 | 支持已识别 1.x Workbench（`<1.140` 映射 `1.107.1`，`>=1.140` 映射 `1.140.0`），未知版本安全 skipped。优先使用 C 盘标准配置目录并镜像同步已有 Scoop 便携 `data/`；使用精确贡献标签和原生 autoDetect；保留字体、光标形状、终端渲染和高对比度偏好 |
+| `trae` | 实际 Workbench 版本对应的同一公开清单；公开 Git decoration 等 | 优先使用 C 盘标准配置目录并镜像同步已有便携目录；私有 AI 字段 unsupported，不猜测替代键。配置和扩展使用 Plan 的实例路径 |
+| `antigravity-ide` | 与 VS Code/TRAE 共享同一 Workbench 公开清单与 VSIX 双主题扩展 | 优先使用 `%APPDATA%\Antigravity IDE\User\settings.json` 与 `~/.antigravity-ide/extensions`，不改动 Scoop 目录结构，镜像同步已有便携 `data/` 目录 |
+| `chatgpt-app` | 已验证 config.toml v1 两个 Light/Dark 主题表及 appearanceTheme | appearanceTheme=system，accentSource=custom、contrast=100、opaqueWindows=true；完整 semanticColors；补齐缺失 fonts table，不发明字体值；未知布局安全 skipped。UI 字号、sidebar 透明度和内嵌终端无已验证入口，unsupported；手动重启 |
+| `antigravity` | Antigravity 2.0 桌面端 `~/.gemini/config/config.json` 与 `%APPDATA%\Antigravity\app_storage.json` | 写入 `userSettings.themeMode=THEME_MODE_INHERIT`、`customThemeSeedsLight` / `customThemeSeedsDark`（5 项种子键）及 `hubSurfaceBackgroundColor`，保留无关配置键；Snapshot/Verify/Rollback 完整覆盖两个文件 |
 | `chrome` | 两个 canonical unpacked Light/Dark Manifest V3 主题，24 colors、6 tints 和适用 properties | ZIP 为内部产物，用户在 chrome://extensions 手动加载并确认。没有 NTP 图片时省略 alignment/repeat；只写 ntp_logo_alternate。不支持 theme 字体/全窗口透明度，内容字体保持原值 |
 
-默认全部六个目标；显式 cursor 安全 skipped，不访问 Cursor 文件。Seed Color 必须显式输入；示例为 `#22C55E`，没有默认 Seed。
+默认全部八个目标；显式 cursor 安全 skipped，不访问 Cursor 文件。Seed Color 必须显式输入；示例为 `#22C55E`，没有默认 Seed。
 
 ## 字段和版本证据
 
 Field inventory `2026-10-05.v4` 与生成器共享显式字段映射，区分 color、font、display_property 和 theme_structure；逐项显示处理策略、来源、版本、适用条件、实际 capability 和生成值。能力为 supported、unsupported、not-applicable、applied、verified 或 failed。保留字体不等于生成字体值；App fonts 的空表修复属于结构修复。
 
-公开编辑器清单固定为 [vscode-docs commit 8889b05](https://github.com/microsoft/vscode-docs/blob/8889b0542cb2144fb53f5f53bd19c1395e2d9fa1/api/references/theme-color.md) 的 971 项。与 [1.107.1](https://github.com/microsoft/vscode/tree/1.107.1) / [1.140.0](https://github.com/microsoft/vscode/tree/1.140.0) 源码 registerColor、ANSI 和 contributes.colors 交集分别 901/962 项，排除 Windows 普通 Light/Dark 不适用的五项后生成 896/957 项。window.activeBorder/inactiveBorder 在 Windows 不适用；contrastBorder/contrastActiveBorder 和 editor.selectionForeground 仅高对比度适用。其余未注册项 unsupported；不写 panel.foreground。
+公开编辑器清单固定为 [vscode-docs commit 8889b05](https://github.com/microsoft/vscode-docs/blob/8889b0542cb2144fb53f5f53bd19c1395e2d9fa1/api/references/theme-color.md) 的 971 项。与 [1.107.1](https://github.com/microsoft/vscode/tree/1.107.1) / [1.140.0](https://github.com/microsoft/vscode/tree/1.140.0) 源码 registerColor、ANSI 和 contributes.colors 交集分别 901/962 项，排除仅高对比度适用的两项（`contrastBorder`、`contrastActiveBorder`）后生成 899/960 项，包含 `window.activeBorder`、`window.inactiveBorder`、`editor.selectionForeground` 与 `gauge.*`。其余未注册项 unsupported；不写 panel.foreground。
 
 普通正文保持不透明、低色度 Neutral primary text，在实际背景 >=7；其他功能/状态/语义文字 >=4.5。普通相邻区域目标 >=1.2，交互边界 >=3。35 项文档透明约束保留 alpha；查找文字按合成背景检查，Diff/Merge 叠层保留语义与区域区分。实心窗口策略不把叠层机械改为不透明。编辑器 ANSI black/white/brightBlack 保持不同角色。
 

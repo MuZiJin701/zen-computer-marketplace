@@ -1,3 +1,4 @@
+from .antigravity import AntigravityAdapter
 from .base import AdapterResult, AdapterStatus, ThemeAdapter, UnsupportedAdapter
 from .chrome import ChromeAdapter
 from .codex import CodexAdapter
@@ -9,6 +10,7 @@ from .windows import WindowsAdapter, WindowsConfig
 __all__ = [
     "AdapterResult",
     "AdapterStatus",
+    "AntigravityAdapter",
     "ChromeAdapter",
     "CodexAdapter",
     "EditorSpec",

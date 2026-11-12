@@ -41,7 +41,7 @@ def test_editor_public_coverage_uses_independent_official_evidence(baseline):
     evidence = json.loads((Path(__file__).parent / "fixtures/official-vscode-colors.json").read_text(encoding="utf-8"))
     plan = create_plan("#22C55E", ["vscode"])
     colors = build_theme_json(plan, "One Tone", "light", baseline=baseline)["colors"]
-    not_applicable = {"window.activeBorder", "window.inactiveBorder", "contrastBorder", "contrastActiveBorder", "editor.selectionForeground"}
+    not_applicable = {"contrastBorder", "contrastActiveBorder"}
     assert set(colors) == set(evidence["registrations"][baseline]) - not_applicable
     assert "panel.foreground" not in colors
     for name in set(evidence["transparent"]) & set(colors):
@@ -251,7 +251,9 @@ def test_editor_theme_uses_contrast_safe_text_for_accented_tokens():
 
     palette = plan.palette_for(plan.mode)
     assert theme["colors"]["editorCursor.foreground"] == palette["accent_text"]
-    assert "editor.selectionForeground" not in theme["colors"]
+    assert theme["colors"]["editor.selectionForeground"] == palette["selection_foreground"]
+    assert theme["colors"]["window.activeBorder"] == palette["border"]
+    assert theme["colors"]["window.inactiveBorder"] == palette["surface_subtle"]
     assert theme["colors"]["terminal.selectionForeground"] == palette["selection_foreground"]
     assert theme["colors"]["terminalCursor.foreground"] == palette["accent_text"]
     assert theme["colors"]["textLink.foreground"] == palette["accent_text"]
@@ -422,3 +424,45 @@ def test_editor_verify_discovers_extension_after_new_adapter_instance(tmp_path):
     result = second_adapter.verify(plan)
 
     assert result.verified is True
+
+
+def test_editor_adapter_mirrors_standard_settings_and_extension_to_portable_data(tmp_path):
+    executable = tmp_path / "bin" / "antigravity-ide.cmd"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("@echo off", encoding="utf-8")
+    standard_settings = tmp_path / "appdata" / "Antigravity IDE" / "User" / "settings.json"
+    standard_extensions = tmp_path / "user" / ".antigravity-ide" / "extensions"
+    portable_settings = tmp_path / "scoop" / "apps" / "antigravity-ide" / "current" / "data" / "user-data" / "User" / "settings.json"
+    portable_extensions = tmp_path / "scoop" / "apps" / "antigravity-ide" / "current" / "data" / "extensions"
+    portable_settings.parent.mkdir(parents=True)
+    portable_settings.write_text(json.dumps({"workbench.colorTheme": "Default Dark+"}), encoding="utf-8")
+    portable_extensions.mkdir(parents=True)
+
+    spec = _editor_spec(
+        "antigravity-ide",
+        executable,
+        standard_settings,
+        standard_extensions,
+        resolution_source="standard",
+        mirror_targets=((portable_settings, portable_extensions),),
+    )
+
+    def command_runner(command, **kwargs):
+        _write_valid_extension(spec)
+        return subprocess.CompletedProcess(command, 0)
+
+    adapter = VSCodeFamilyAdapter(spec, command_runner=command_runner)
+    plan = create_plan("#7C3AED", ["antigravity-ide"], plan_id="plan-editor-mirror-001")
+
+    assert adapter.detect().status == "ok"
+    assert adapter.snapshot(tmp_path / "backup").status == "ok"
+    assert adapter.apply(plan).status == "ok"
+    assert standard_settings.is_file()
+    assert json.loads(standard_settings.read_text(encoding="utf-8"))["workbench.colorTheme"] == "One Tone antigravity-ide Dark"
+    assert json.loads(portable_settings.read_text(encoding="utf-8"))["workbench.colorTheme"] == "One Tone antigravity-ide Dark"
+    assert (portable_extensions / "one-tone.one-tone-antigravity-ide-0.1.0" / "package.json").is_file()
+    assert adapter.verify(plan).verified is True
+    assert adapter.rollback(tmp_path / "backup").verified is True
+    assert not standard_settings.exists()
+    assert json.loads(portable_settings.read_text(encoding="utf-8"))["workbench.colorTheme"] == "Default Dark+"
+    assert not (portable_extensions / "one-tone.one-tone-antigravity-ide-0.1.0").exists()

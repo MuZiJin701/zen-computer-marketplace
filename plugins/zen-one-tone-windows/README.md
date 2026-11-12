@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-提供可独立分发的 `zen-one-tone-windows` Skill，用一个 Seed Color 统一 Windows 桌面、Windows Terminal、VS Code、TRAE、ChatGPT App 和 Chrome 本地主题。Cursor 暂不属于当前支持目标。
+提供可独立分发的 `zen-one-tone-windows` Skill，用一个 Seed Color 统一 Windows 桌面、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 和 Chrome 本地主题。Cursor 暂不属于当前支持目标。
 
 ## 安装
 
@@ -35,13 +35,14 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 ## 命令
 
 ```powershell
+python .\scripts\run_one_tone.py sync '#22C55E'
 python .\scripts\run_one_tone.py preview '#22C55E'
 python .\scripts\run_one_tone.py apply plan-... --confirm
 python .\scripts\run_one_tone.py verify plan-...
-python .\scripts\run_one_tone.py rollback tx-...
+python .\scripts\run_one_tone.py rollback --latest
 ```
 
-Seed Color 是 ChatGPT App 和 Windows 的 Theme anchor/Accent source；ChatGPT App 的 `surface` 与 Windows 壁纸使用同一 Seed 派生的 Tonal surface，Light/Dark 大面积角色保持受控的明度跨度。ChatGPT App 会补齐缺失的 `fonts` table，保留已有字体值，并在两个 Mode 使用实心窗口与最高对比度。ChatGPT App、Windows Terminal、VS Code 和 TRAE 跟随 Windows 系统模式；Windows 本身不被切换，Chrome 主题仍需在 `chrome://extensions` 手动加载。Windows 自动取色开启时可能覆盖固定强调色。
+Seed Color 是 ChatGPT App、Antigravity 和 Windows 的 Theme anchor/Accent source；ChatGPT App 的 `surface`、Antigravity 的 `customThemeSeeds*` / `hubSurfaceBackgroundColor` 与 Windows 壁纸使用同一 Seed 派生的 Tonal surface，Light/Dark 大面积角色保持受控的明度跨度。ChatGPT App 会补齐缺失的 `fonts` table，保留已有字体值，并在两个 Mode 使用实心窗口与最高对比度。ChatGPT App、Antigravity、VS Code、TRAE 和 Antigravity IDE 跟随系统模式；Windows Terminal 同时注册浅深两套主题并默认启用 `One Tone Dark` 深色主题；Windows 本身不被切换，Chrome 主题仍需在 `chrome://extensions` 手动加载。Windows 自动取色开启时可能覆盖固定强调色。
 
 Skill runtime 位于当前目录，使用 `uv` 运行：
 

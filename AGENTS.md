@@ -27,8 +27,8 @@ Preview → Apply → Verify → Rollback
 
 ## 仓库结构
 
-- plugins/：Marketplace 下的可安装 Plugin 包；当前 `zen-one-tone-windows` 是第一个 Plugin。
-- plugins/zen-one-tone-windows/skills/zen-one-tone-windows/：第一个 Plugin 中可独立分发的 Skill 包和唯一运行时项目。
+- plugins/：Marketplace 下的可安装 Plugin 包；当前仅维护 `zen-one-tone-windows`。
+- plugins/zen-one-tone-windows/skills/zen-one-tone-windows/：`zen-one-tone-windows` 中可独立分发的 Skill 包和唯一运行时项目。
 - tests/：按 Marketplace → Plugin → Skill 组织的根仓库测试，不随 Skill 分发。
 - docs/：架构、测试、Agent 协作配置和 ADR。
 - 根目录 pyproject.toml：仅用于开发和测试，不安装运行时包。
@@ -38,28 +38,30 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 ## 核心安全规则
 
 - Preview 只生成 Plan，不修改系统或应用配置。
-- Apply 只接受已有 plan_id，应用前必须校验 Plan Hash。
+- Apply 只接受已有 plan_id，应用前必须校验 Plan Hash；`sync` 命令按顺序组合 `Preview → Apply → Verify`。
+- Skill 层面需要用户选择 Seed Color 或目标范围时，通过宿主弹窗工具（如 `ask_question`）让用户点选，不在纯文本对话中停顿等待。
 - 每个目标修改前必须 Snapshot。
 - 目标失败时只回滚失败目标；其他成功目标保持修改。
 - Apply 每个操作后必须持久化事务记录；补偿回滚失败必须报告 failed。
 - 至少一个目标成功且其他目标失败或 skipped 时才报告 partial；没有成功目标时报告 failed。
 - Verify 只读取当前配置并与 Plan 对比，不创建事务、不 Snapshot、不 Apply、不 Restart、不 Rollback。
-- Rollback 必须接受明确的 transaction_id，只能恢复该事务自己的快照或产物元数据，并验证恢复结果。
+- Rollback 支持 `--latest`（或省略 `transaction_id` 默认回滚最新事务）及显式 `transaction_id`，只能恢复该事务自己的快照或产物元数据，并验证恢复结果。
 - 只修改用户明确选择的目标，不猜测未知目标兼容性。
 - Plan ID、Transaction ID 和 target 必须是安全路径组件；未知 target 可安全 skipped，但不得创建越界路径。
 - Plan、事务和目标配置 JSON 使用同目录临时文件加原子替换，避免中断造成截断文件。
 - 事务快照默认保留最近 5 个已完成事务；只清理工具生成的数据。
-- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface 与 Windows 壁纸继续使用派生 Tonal surface。Windows Shell accent 保护固定白色图标 `4.5:1`；确认 Apply 关闭透明效果，保持应用/Shell 模式、AutoColorization、高对比度和字体。高对比度开启或 API 未知时安全跳过 Windows。
+- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface、Antigravity `customThemeSeeds*` / `hubSurfaceBackgroundColor` 与 Windows 壁纸继续使用派生 Tonal surface。Windows Shell accent 保护固定白色图标 `4.5:1`，同步 `AccentColorInactive` 与 `Control Panel\Colors\Background`；确认 Apply 关闭透明效果，保持应用/Shell 模式、AutoColorization、高对比度和字体。高对比度开启或 API 未知时安全跳过 Windows。
 - Cursor 暂不属于用户可见支持目标；显式输入 cursor 必须安全 skipped，不得访问或修改 Cursor 文件。
 
 ## 当前实现边界
 
-- Windows Terminal 覆盖 defaults、所有 Profile 及已有 unfocusedAppearance；按版本关闭 Acrylic/Mica、设实心 opacity、清空背景图片、移除固定 tabColor，并保留字体和非受管偏好。成对 colorScheme 需 >=1.16，成对 theme/Mica 需 >=1.17，frame/unfocusedFrame 需 >=1.22；平台能力另行校验，未知项报告 partial。Scheme 不写 selectionForeground。
+- Windows Terminal 覆盖 defaults、所有 Profile 及已有 unfocusedAppearance；按版本关闭 Acrylic/Mica、设实心 opacity、清空背景图片、移除固定 tabColor，并保留字体和非受管偏好。同时注册 `One Tone Light` 与 `One Tone Dark` 两套 Scheme 和窗口主题，默认绑定 `One Tone Dark`（`applicationTheme = dark`）。平台能力另行校验，未知项报告 partial。Scheme 不写 selectionForeground。
 - Windows Terminal 正文在两种 Mode 的受管背景均要求 `7:1`；原生 `adjustIndistinguishableColors = always` 按 Preview 发现的版本能力应用。Shell/PSReadLine 默认只选 PowerShell 7 `pwsh`，不回退 Windows PowerShell；配置 Verify 与真实渲染验收分别报告。
-- VS Code/TRAE 以固定公开清单与实际 Workbench 注册字段的交集为范围；当前核查基线为 1.107.1/1.140.0，未知版本安全跳过。透明装饰叠层与实心窗口策略分开，文字检查真实合成背景；私有 AI 能力 unsupported。
+- VS Code / TRAE / Antigravity IDE 以固定公开清单与实际 Workbench 注册字段的交集为范围；支持 1.x Workbench（`<1.140` 映射 `1.107.1`，`>=1.140` 映射 `1.140.0`），未知版本安全跳过。优先使用 C 盘标准配置目录（`%APPDATA%\<App>\User\settings.json` 与 `~/.<app>/extensions`），不改动 Scoop 便携目录结构，同时对已存在的 Scoop `data/` 便携目录执行镜像同步。透明装饰叠层与实心窗口策略分开，文字检查真实合成背景；私有 AI 能力 unsupported。
+- Antigravity 桌面端（`antigravity`）保持独立 Adapter，管理 `~/.gemini/config/config.json` 与 `%APPDATA%\Antigravity\app_storage.json`。
 - Chrome 使用 Manifest V3 本地主题，覆盖框架、工具栏、标签、书签页、NTP、链接和地址栏文字；激活仍由用户手动确认。
 - 普通正文在实际受管背景以及深层背景文字目标为 7:1，其他功能/状态文字为 4.5:1；视觉 accent 不直接作为文字色，装饰叠层按合成背景校验。
-- Codex 保持独立 Adapter，不与 VS Code/TRAE Adapter 合并。
+- Codex（`chatgpt-app`）保持独立 Adapter，不与 VS Code/TRAE/Antigravity IDE Adapter 合并。
 
 ## 技术约束
 

@@ -2,15 +2,16 @@
 
 [简体中文](README.md)
 
-This Plugin distributes one self-contained Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows, Windows Terminal, VS Code, TRAE, ChatGPT App and Chrome around an explicitly supplied Seed Color.
+This Plugin distributes one self-contained Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity and Chrome around an explicitly supplied Seed Color.
 
-Use Preview → confirmed Plan Apply → read-only Verify → explicit Transaction Rollback. From the Skill directory:
+Use `sync` (one-step Preview → Apply → Verify) or the explicit Preview → confirmed Plan Apply → read-only Verify → Transaction Rollback workflow. From the Skill directory:
 
 ```powershell
+python .\scripts\run_one_tone.py sync '#22C55E'
 python .\scripts\run_one_tone.py preview '#22C55E'
 python .\scripts\run_one_tone.py apply plan-... --confirm
 python .\scripts\run_one_tone.py verify plan-...
-python .\scripts\run_one_tone.py rollback tx-...
+python .\scripts\run_one_tone.py rollback --latest
 ```
 
 Use the actual saved IDs. Preview writes only a Plan; no real theme is applied without confirmation. Apply snapshots each target, journals every operation and compensates only failed targets. Rollback restores its own snapshot, including formerly absent settings. Older Plans must be recreated for the current appearance policy; historical Transactions remain restorable.

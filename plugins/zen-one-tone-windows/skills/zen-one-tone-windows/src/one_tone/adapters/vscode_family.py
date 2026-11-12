@@ -7,10 +7,9 @@ import zipfile
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from ..plan import Plan
 from ..editor_instance import EditorSpec
 from ..field_mappings import vscode_capabilities, vscode_theme_colors
-from ..palette import readable_text
+from ..plan import Plan
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
 
@@ -105,16 +104,36 @@ class VSCodeFamilyAdapter:
         if isinstance(self.spec.executable, Path):
             if self.spec.executable.exists():
                 return True
-            # CLI fallbacks such as ``Path("code")`` should still resolve
-            # through PATH when the executable is not a file in cwd.
             return shutil.which(str(self.spec.executable)) is not None
         return shutil.which(str(self.spec.executable)) is not None
 
-    def _read_settings(self) -> dict[str, Any]:
-        payload = json.loads(self.spec.settings_path.read_text(encoding="utf-8"))
+    def _settings_ready(self) -> bool:
+        if self.spec.settings_path.is_file():
+            return True
+        if self.spec.resolution_source == "standard" and (
+            self.spec.extensions_dir.is_dir()
+            or self.spec.settings_path.parent.is_dir()
+            or self.spec.settings_path.parent.parent.is_dir()
+            or bool(self.spec.mirror_targets)
+        ):
+            return True
+        return False
+
+    def _read_settings_at(self, settings_path: Path, allow_missing: bool = False) -> dict[str, Any]:
+        if not settings_path.is_file():
+            if allow_missing:
+                return {}
+            raise FileNotFoundError(f"editor settings not found: {settings_path}")
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("editor settings must be a JSON object")
         return payload
+
+    def _read_settings(self) -> dict[str, Any]:
+        return self._read_settings_at(
+            self.spec.settings_path,
+            allow_missing=self.spec.resolution_source == "standard",
+        )
 
     def _extension_id(self) -> str:
         return f"one-tone.one-tone-{self.target}"
@@ -139,16 +158,16 @@ class VSCodeFamilyAdapter:
         except (OSError, TypeError, AttributeError, json.JSONDecodeError):
             return set()
 
-    def _installed_extension_dirs(self) -> list[Path]:
+    def _installed_extension_dirs_in(self, extensions_dir: Path) -> list[Path]:
         prefix = f"{self._extension_id()}-"
-        if not self.spec.extensions_dir.is_dir():
+        if not extensions_dir.is_dir():
             return []
         candidates = [
             path
-            for path in self.spec.extensions_dir.iterdir()
+            for path in extensions_dir.iterdir()
             if path.is_dir() and path.name.startswith(prefix)
         ]
-        index = self.spec.extensions_dir / "extensions.json"
+        index = extensions_dir / "extensions.json"
         if index.is_file():
             try:
                 entries = json.loads(index.read_text(encoding="utf-8"))
@@ -163,13 +182,16 @@ class VSCodeFamilyAdapter:
                     continue
                 relative = entry.get("relativeLocation")
                 if isinstance(relative, str):
-                    candidate = self.spec.extensions_dir / relative
+                    candidate = extensions_dir / relative
                     if candidate.is_dir():
                         candidates.append(candidate)
         return list(dict.fromkeys(candidates))
 
-    def _registered_extension_dirs(self) -> list[Path]:
-        index = self.spec.extensions_dir / "extensions.json"
+    def _installed_extension_dirs(self) -> list[Path]:
+        return self._installed_extension_dirs_in(self.spec.extensions_dir)
+
+    def _registered_extension_dirs_in(self, extensions_dir: Path) -> list[Path]:
+        index = extensions_dir / "extensions.json"
         if not index.is_file():
             return []
         try:
@@ -183,10 +205,13 @@ class VSCodeFamilyAdapter:
                 continue
             relative = entry.get("relativeLocation")
             if isinstance(relative, str):
-                candidate = self.spec.extensions_dir / relative
+                candidate = extensions_dir / relative
                 if candidate.is_dir():
                     registered.append(candidate)
         return list(dict.fromkeys(registered))
+
+    def _registered_extension_dirs(self) -> list[Path]:
+        return self._registered_extension_dirs_in(self.spec.extensions_dir)
 
     def _theme_file(self, extension_dir: Path) -> Path | None:
         for candidate in (
@@ -204,8 +229,8 @@ class VSCodeFamilyAdapter:
             return dark, light
         return None
 
-    def _registration_candidate(self) -> tuple[Path | None, str | None]:
-        for extension_dir in self._registered_extension_dirs():
+    def _registration_candidate_in(self, extensions_dir: Path) -> tuple[Path | None, str | None]:
+        for extension_dir in self._registered_extension_dirs_in(extensions_dir):
             if self._theme_files(extension_dir) is None:
                 continue
             labels = self._contributed_labels(extension_dir)
@@ -213,61 +238,73 @@ class VSCodeFamilyAdapter:
                 return extension_dir, None
         return None, "registered extension, theme files or contributed labels are incomplete"
 
-    def _snapshot_extension_state(self, backup_dir: Path) -> None:
-        index = self.spec.extensions_dir / "extensions.json"
+    def _registration_candidate(self) -> tuple[Path | None, str | None]:
+        return self._registration_candidate_in(self.spec.extensions_dir)
+
+    def _snapshot_extension_state_in(self, extensions_dir: Path, backup_dir: Path, prefix: str) -> None:
+        index = extensions_dir / "extensions.json"
         if index.is_file():
-            shutil.copy2(index, backup_dir / f"{self.target}-extensions.json")
-        obsolete = self.spec.extensions_dir / ".obsolete"
+            shutil.copy2(index, backup_dir / f"{prefix}-extensions.json")
+        obsolete = extensions_dir / ".obsolete"
         if obsolete.is_file():
-            shutil.copy2(obsolete, backup_dir / f"{self.target}-extensions-obsolete")
-        installed_backup = backup_dir / f"{self.target}-installed"
-        for extension_dir in self._installed_extension_dirs():
+            shutil.copy2(obsolete, backup_dir / f"{prefix}-extensions-obsolete")
+        installed_backup = backup_dir / f"{prefix}-installed"
+        for extension_dir in self._installed_extension_dirs_in(extensions_dir):
             shutil.copytree(extension_dir, installed_backup / extension_dir.name)
 
-    def _restore_extension_state(self, backup_dir: Path) -> bool:
-        for extension_dir in self._installed_extension_dirs():
+    def _snapshot_extension_state(self, backup_dir: Path) -> None:
+        self._snapshot_extension_state_in(self.spec.extensions_dir, backup_dir, self.target)
+
+    def _restore_extension_state_in(self, extensions_dir: Path, backup_dir: Path, prefix: str) -> bool:
+        for extension_dir in self._installed_extension_dirs_in(extensions_dir):
             shutil.rmtree(extension_dir)
-        staging = self.spec.extensions_dir / f"one-tone-{self.target}"
+        staging = extensions_dir / f"one-tone-{self.target}"
         if staging.exists():
             shutil.rmtree(staging)
 
-        installed_backup = backup_dir / f"{self.target}-installed"
+        installed_backup = backup_dir / f"{prefix}-installed"
         if installed_backup.is_dir():
+            extensions_dir.mkdir(parents=True, exist_ok=True)
             for extension_dir in installed_backup.iterdir():
-                shutil.copytree(extension_dir, self.spec.extensions_dir / extension_dir.name)
+                shutil.copytree(extension_dir, extensions_dir / extension_dir.name)
 
-        index = self.spec.extensions_dir / "extensions.json"
-        index_backup = backup_dir / f"{self.target}-extensions.json"
+        index = extensions_dir / "extensions.json"
+        index_backup = backup_dir / f"{prefix}-extensions.json"
         if index_backup.is_file():
+            extensions_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(index_backup, index)
         elif index.exists():
             index.unlink()
 
-        obsolete = self.spec.extensions_dir / ".obsolete"
-        obsolete_backup = backup_dir / f"{self.target}-extensions-obsolete"
+        obsolete = extensions_dir / ".obsolete"
+        obsolete_backup = backup_dir / f"{prefix}-extensions-obsolete"
         if obsolete_backup.is_file():
+            extensions_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(obsolete_backup, obsolete)
         elif obsolete.exists():
             obsolete.unlink()
 
-        current_names = {path.name for path in self._installed_extension_dirs()}
+        current_names = {path.name for path in self._installed_extension_dirs_in(extensions_dir)}
         backup_names = {path.name for path in installed_backup.iterdir()} if installed_backup.is_dir() else set()
         index_restored = (not index_backup.is_file() and not index.exists()) or (
             index_backup.is_file() and index.read_bytes() == index_backup.read_bytes()
         )
         return current_names == backup_names and index_restored
 
-    def _remove_installed_extension_state(self) -> None:
-        installed_dirs = self._installed_extension_dirs()
+    def _restore_extension_state(self, backup_dir: Path) -> bool:
+        return self._restore_extension_state_in(self.spec.extensions_dir, backup_dir, self.target)
+
+    def _remove_installed_extension_state_in(self, extensions_dir: Path) -> None:
+        installed_dirs = self._installed_extension_dirs_in(extensions_dir)
         removable_dirs = [path for path in installed_dirs if self._theme_file(path) is None]
         removable_names = {path.name for path in removable_dirs}
         for extension_dir in removable_dirs:
             shutil.rmtree(extension_dir)
-        staging = self.spec.extensions_dir / f"one-tone-{self.target}"
+        staging = extensions_dir / f"one-tone-{self.target}"
         if staging.exists():
             shutil.rmtree(staging)
 
-        index = self.spec.extensions_dir / "extensions.json"
+        index = extensions_dir / "extensions.json"
         if not index.is_file():
             return
         try:
@@ -287,6 +324,9 @@ class VSCodeFamilyAdapter:
         if filtered != entries:
             atomic_write_text(index, json.dumps(filtered, ensure_ascii=False, separators=(",", ":")))
 
+    def _remove_installed_extension_state(self) -> None:
+        self._remove_installed_extension_state_in(self.spec.extensions_dir)
+
     def _cli_requires_restart(self, completed: Any) -> bool:
         output = b"\n".join(
             value if isinstance(value, bytes) else str(value or "").encode("utf-8", errors="replace")
@@ -297,6 +337,7 @@ class VSCodeFamilyAdapter:
             b"please restart vs code before reinstalling",
             b"please restart trae before reinstalling",
             b"restart trae before reinstalling",
+            b"restart antigravity",
         )
         return any(marker in output for marker in restart_markers)
 
@@ -309,8 +350,9 @@ class VSCodeFamilyAdapter:
                 values.append(str(value).strip())
         return " ".join(values)[:1000]
 
-    def _manual_install_vsix(self, vsix_path: Path) -> bool:
-        staging = self.spec.extensions_dir / f".one-tone-{self.target}-staging"
+    def _manual_install_vsix_to(self, vsix_path: Path, extensions_dir: Path) -> bool:
+        extensions_dir.mkdir(parents=True, exist_ok=True)
+        staging = extensions_dir / f".one-tone-{self.target}-staging"
         try:
             if staging.exists():
                 shutil.rmtree(staging)
@@ -328,12 +370,12 @@ class VSCodeFamilyAdapter:
             version = str(package["version"])
             if extension_id != self._extension_id():
                 return False
-            installed_dir = self.spec.extensions_dir / f"{extension_id}-{version}"
+            installed_dir = extensions_dir / f"{extension_id}-{version}"
             if installed_dir.exists():
                 shutil.rmtree(installed_dir)
             shutil.move(str(package_dir), str(installed_dir))
 
-            index = self.spec.extensions_dir / "extensions.json"
+            index = extensions_dir / "extensions.json"
             entries = []
             if index.is_file():
                 loaded = json.loads(index.read_text(encoding="utf-8"))
@@ -371,10 +413,26 @@ class VSCodeFamilyAdapter:
             if staging.exists():
                 shutil.rmtree(staging, ignore_errors=True)
 
+    def _manual_install_vsix(self, vsix_path: Path) -> bool:
+        return self._manual_install_vsix_to(vsix_path, self.spec.extensions_dir)
+
+    def _apply_theme_settings_to(self, settings_path: Path, mode: str, allow_missing: bool = True) -> dict[str, Any]:
+        settings = self._read_settings_at(settings_path, allow_missing=allow_missing)
+        settings["workbench.colorTheme"] = self._theme_label(mode)
+        settings["workbench.preferredDarkColorTheme"] = self._theme_label("dark")
+        settings["workbench.preferredLightColorTheme"] = self._theme_label("light")
+        settings["window.autoDetectColorScheme"] = True
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            settings_path,
+            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
+        )
+        return settings
+
     def detect(self) -> AdapterResult:
         if self.spec.resolution_status != "ok":
             return AdapterResult(self.target, "skipped", False, False, self.spec.resolution_message or f"{self.target} configuration path is ambiguous")
-        if not self.spec.settings_path.is_file():
+        if not self._settings_ready():
             return AdapterResult(self.target, "skipped", False, False, f"{self.target} settings not found: {self.spec.settings_path}")
         if not self._executable_available():
             return AdapterResult(self.target, "skipped", False, False, f"{self.target} executable not found: {self.spec.executable}")
@@ -391,12 +449,24 @@ class VSCodeFamilyAdapter:
         )
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
-        if not self.spec.settings_path.is_file():
+        if not self._settings_ready():
             return AdapterResult(self.target, "failed", False, False, "editor settings not found")
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(self.spec.settings_path, backup_dir / f"{self.target}-settings.json")
+            primary_exists = self.spec.settings_path.is_file()
+            if primary_exists:
+                shutil.copy2(self.spec.settings_path, backup_dir / f"{self.target}-settings.json")
             self._snapshot_extension_state(backup_dir)
+            mirror_states = []
+            for idx, (mirror_settings, mirror_extensions) in enumerate(self.spec.mirror_targets):
+                prefix = f"{self.target}-mirror-{idx}"
+                m_exists = mirror_settings.is_file()
+                if m_exists:
+                    shutil.copy2(mirror_settings, backup_dir / f"{prefix}-settings.json")
+                self._snapshot_extension_state_in(mirror_extensions, backup_dir, prefix)
+                mirror_states.append({"index": idx, "settings_exists": m_exists})
+            state_payload = {"primary_exists": primary_exists, "mirrors": mirror_states}
+            atomic_write_text(backup_dir / f"{self.target}-settings-state.json", json.dumps(state_payload, sort_keys=True))
             return AdapterResult(
                 self.target,
                 "ok",
@@ -421,11 +491,21 @@ class VSCodeFamilyAdapter:
             settings["workbench.preferredDarkColorTheme"] = self._theme_label("dark")
             settings["workbench.preferredLightColorTheme"] = self._theme_label("light")
             settings["window.autoDetectColorScheme"] = True
+            self.spec.settings_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_text(
                 self.spec.settings_path,
                 json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
             )
-            command = [str(self.spec.executable), "--install-extension", str(vsix_path), "--force"]
+            command = [
+                str(self.spec.executable),
+                "--install-extension",
+                str(vsix_path),
+                "--force",
+                "--user-data-dir",
+                str(self.spec.settings_path.parent.parent),
+                "--extensions-dir",
+                str(self.spec.extensions_dir),
+            ]
             if self.command_runner is None:
                 completed = subprocess.run(command, check=False, capture_output=True, timeout=30)
             else:
@@ -443,9 +523,20 @@ class VSCodeFamilyAdapter:
                 else:
                     cli_warning = f" CLI returned {cli_returncode}; final installation evidence was used."
             extension_dir, evidence_error = self._registration_candidate()
+            if extension_dir is None and self.command_runner is None:
+                # If a launcher/shim ignored --extensions-dir, install directly into the target extensions_dir.
+                if self._manual_install_vsix(vsix_path):
+                    extension_dir, evidence_error = self._registration_candidate()
             if extension_dir is None:
                 return AdapterResult(self.target, "failed", True, False, f"{self.target} extension installation evidence failed: {evidence_error}{cli_warning}")
             self._extension_dir = extension_dir
+
+            for mirror_settings, mirror_extensions in self.spec.mirror_targets:
+                self._remove_installed_extension_state_in(mirror_extensions)
+                self._apply_theme_settings_to(mirror_settings, plan.mode, allow_missing=True)
+                if not self._manual_install_vsix_to(vsix_path, mirror_extensions):
+                    return AdapterResult(self.target, "failed", True, False, f"{self.target} mirror extension installation failed at {mirror_extensions}")
+
             status = "partial" if cli_returncode not in (0, None) else "ok"
             return AdapterResult(
                 self.target, status, True, False, f"{self.target} VSIX installed and theme selected.{cli_warning}",
@@ -464,33 +555,46 @@ class VSCodeFamilyAdapter:
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, zipfile.BadZipFile, subprocess.TimeoutExpired) as error:
             return AdapterResult(self.target, "failed", False, False, f"{self.target} apply failed: {error}")
 
+    def _verify_instance_target(self, plan: Plan, settings_path: Path, extensions_dir: Path, preferred_dir: Path | None = None) -> tuple[bool, str]:
+        if not settings_path.is_file():
+            return False, f"{self.target} settings not found at {settings_path}"
+        settings = self._read_settings_at(settings_path)
+        candidates = self._registered_extension_dirs_in(extensions_dir)
+        extension_dir = preferred_dir if preferred_dir in candidates else (
+            max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+        )
+        contributed_labels = self._contributed_labels(extension_dir) if extension_dir else None
+        labels_ok = contributed_labels is not None and set(self._theme_labels()) <= contributed_labels
+        verified = (
+            settings.get("workbench.colorTheme") in self._theme_labels()
+            and settings.get("workbench.preferredDarkColorTheme") == self._theme_label("dark")
+            and settings.get("workbench.preferredLightColorTheme") == self._theme_label("light")
+            and settings.get("window.autoDetectColorScheme") is True
+            and extension_dir is not None
+            and self._theme_files(extension_dir) is not None
+            and labels_ok
+        )
+        if not verified:
+            return False, f"{self.target} theme verification failed"
+        for mode, path in zip(("dark", "light"), self._theme_files(extension_dir)):
+            actual = json.loads(path.read_text(encoding="utf-8"))
+            expected = build_theme_json(plan, self._theme_label(mode), mode, baseline=self.spec.color_baseline)
+            if actual != expected:
+                return False, f"{self.target} {mode} theme contents do not match Plan"
+        return True, ""
+
     def verify(self, plan: Plan) -> AdapterResult:
         if not self.spec.color_baseline:
             return AdapterResult(self.target, "skipped", False, False, "Workbench color baseline is unverified")
         try:
+            ok, error_message = self._verify_instance_target(plan, self.spec.settings_path, self.spec.extensions_dir, self._extension_dir)
+            if not ok:
+                return AdapterResult(self.target, "failed", False, False, error_message)
+            for mirror_settings, mirror_extensions in self.spec.mirror_targets:
+                m_ok, m_error = self._verify_instance_target(plan, mirror_settings, mirror_extensions)
+                if not m_ok:
+                    return AdapterResult(self.target, "failed", False, False, m_error)
             settings = self._read_settings()
-            candidates = self._registered_extension_dirs()
-            extension_dir = self._extension_dir if self._extension_dir in candidates else (
-                max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
-            )
-            contributed_labels = self._contributed_labels(extension_dir) if extension_dir else None
-            labels_ok = contributed_labels is not None and set(self._theme_labels()) <= contributed_labels
-            verified = (
-                settings.get("workbench.colorTheme") in self._theme_labels()
-                and settings.get("workbench.preferredDarkColorTheme") == self._theme_label("dark")
-                and settings.get("workbench.preferredLightColorTheme") == self._theme_label("light")
-                and settings.get("window.autoDetectColorScheme") is True
-                and extension_dir is not None
-                and self._theme_files(extension_dir) is not None
-                and labels_ok
-            )
-            if not verified:
-                return AdapterResult(self.target, "failed", False, False, f"{self.target} theme verification failed")
-            for mode, path in zip(("dark", "light"), self._theme_files(extension_dir)):
-                actual = json.loads(path.read_text(encoding="utf-8"))
-                expected = build_theme_json(plan, self._theme_label(mode), mode, baseline=self.spec.color_baseline)
-                if actual != expected:
-                    return AdapterResult(self.target, "failed", False, False, f"{self.target} {mode} theme contents do not match Plan")
             if self.spec.ai_panel_supported:
                 status = "ok"
                 message = f"{self.target} registration and active theme verified"
@@ -516,13 +620,46 @@ class VSCodeFamilyAdapter:
             return AdapterResult(self.target, "failed", False, False, f"{self.target} verify failed: {error}")
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:
+        state_path = backup_dir / f"{self.target}-settings-state.json"
         backup = backup_dir / f"{self.target}-settings.json"
-        if not backup.is_file():
+        primary_existed = True
+        mirror_states: list[dict[str, Any]] = []
+        if state_path.is_file():
+            try:
+                loaded_state = json.loads(state_path.read_text(encoding="utf-8"))
+                primary_existed = bool(loaded_state.get("primary_exists", True))
+                mirror_states = list(loaded_state.get("mirrors", []))
+            except (OSError, json.JSONDecodeError):
+                primary_existed = True
+        if primary_existed and not backup.is_file():
             return AdapterResult(self.target, "failed", False, False, f"{self.target} settings backup not found")
         try:
-            shutil.copy2(backup, self.spec.settings_path)
+            if primary_existed:
+                self.spec.settings_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup, self.spec.settings_path)
+                primary_settings_restored = self.spec.settings_path.read_bytes() == backup.read_bytes()
+            else:
+                if self.spec.settings_path.exists():
+                    self.spec.settings_path.unlink()
+                primary_settings_restored = not self.spec.settings_path.exists()
             extensions_restored = self._restore_extension_state(backup_dir)
-            restored = self.spec.settings_path.read_bytes() == backup.read_bytes() and extensions_restored
+            restored = primary_settings_restored and extensions_restored
+
+            mirror_state_by_idx = {int(item["index"]): bool(item.get("settings_exists", True)) for item in mirror_states if isinstance(item, dict) and "index" in item}
+            for idx, (mirror_settings, mirror_extensions) in enumerate(self.spec.mirror_targets):
+                prefix = f"{self.target}-mirror-{idx}"
+                m_backup = backup_dir / f"{prefix}-settings.json"
+                m_existed = mirror_state_by_idx.get(idx, m_backup.is_file())
+                if m_existed and m_backup.is_file():
+                    mirror_settings.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(m_backup, mirror_settings)
+                    m_settings_ok = mirror_settings.read_bytes() == m_backup.read_bytes()
+                else:
+                    if mirror_settings.exists():
+                        mirror_settings.unlink()
+                    m_settings_ok = not mirror_settings.exists()
+                m_ext_ok = self._restore_extension_state_in(mirror_extensions, backup_dir, prefix)
+                restored = restored and m_settings_ok and m_ext_ok
             return AdapterResult(self.target, "ok" if restored else "failed", True, restored, f"{self.target} settings and extension restored")
         except OSError as error:
             return AdapterResult(self.target, "failed", False, False, f"{self.target} rollback failed: {error}")

@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover - the production target is Windows.
 PERSONALIZE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 CURRENT_VERSION_KEY = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
 DESKTOP_KEY = r"Control Panel\Desktop"
+COLORS_KEY = r"Control Panel\Colors"
 EXPLORER_ACCENT_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent"
 DWM_KEY = r"Software\Microsoft\Windows\DWM"
 THEME_VALUES = (
@@ -38,8 +39,10 @@ THEME_VALUES = (
     "StartColorMenu",
     "AccentPalette",
     "AccentColor",
+    "AccentColorInactive",
     "ColorizationColor",
     "ColorizationAfterglow",
+    "Background",
 )
 REGISTRY_PATHS = {
     "EnableTransparency": PERSONALIZE_KEY,
@@ -52,8 +55,10 @@ REGISTRY_PATHS = {
     "StartColorMenu": EXPLORER_ACCENT_KEY,
     "AccentPalette": EXPLORER_ACCENT_KEY,
     "AccentColor": DWM_KEY,
+    "AccentColorInactive": DWM_KEY,
     "ColorizationColor": DWM_KEY,
     "ColorizationAfterglow": DWM_KEY,
+    "Background": COLORS_KEY,
 }
 REGISTRY_VALUE_NAMES = {
     "StartTaskbarColorPrevalence": "ColorPrevalence",
@@ -150,8 +155,13 @@ class WindowsRegistryBackend:
         root, path = self._key_for(name)
         registry_name = self._registry_value_name(name)
         with winreg.CreateKey(root, path) as key:
-            value_type = winreg.REG_BINARY if isinstance(value, (bytes, bytearray)) else winreg.REG_DWORD
-            winreg.SetValueEx(key, registry_name, 0, value_type, value if isinstance(value, (bytes, bytearray)) else int(value))
+            if isinstance(value, (bytes, bytearray)):
+                value_type, normalized = winreg.REG_BINARY, value
+            elif isinstance(value, str):
+                value_type, normalized = getattr(winreg, "REG_SZ", "REG_SZ"), value
+            else:
+                value_type, normalized = winreg.REG_DWORD, int(value)
+            winreg.SetValueEx(key, registry_name, 0, value_type, normalized)
 
     def snapshot_values(self, names: tuple[str, ...]) -> dict[str, Any]:
         return {name: self.get_value(name) for name in names}
@@ -312,19 +322,23 @@ def generate_accent_palette(accent: str) -> bytes:
     return b"".join(bytes((*reversed(parse_hex_color(color)), 0)) for color in colors)
 
 
-def _theme_registry_values(plan: Plan) -> dict[str, int | bytes]:
+def _theme_registry_values(plan: Plan) -> dict[str, int | bytes | str]:
     palette = plan.palette_for(plan.mode)
     shell_accent = _shell_accent(palette["accent"])
+    inactive_accent = _shell_accent(palette["surface_subtle"])
     accent = windows_color_value(shell_accent)
-    values = {
+    surface_rgb = " ".join(str(channel) for channel in parse_hex_color(palette["surface"]))
+    values: dict[str, int | bytes | str] = {
         "EnableTransparency": 0,
         "TitleBarColorPrevalence": 1,
         "AccentColorMenu": accent,
         "StartColorMenu": accent,
         "AccentPalette": generate_accent_palette(palette["accent"]),
         "AccentColor": accent,
+        "AccentColorInactive": windows_color_value(inactive_accent),
         "ColorizationColor": windows_colorization_value(shell_accent),
         "ColorizationAfterglow": windows_colorization_value(shell_accent),
+        "Background": surface_rgb,
     }
     values["StartTaskbarColorPrevalence"] = 1
     return values
