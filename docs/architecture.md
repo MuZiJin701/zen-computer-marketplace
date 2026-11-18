@@ -2,13 +2,14 @@
 
 ## Marketplace shape
 
-The repository root contains the Marketplace index, documentation and test harness. The index points at the single installable Plugin under `plugin/`. [ADR 0012](adr/0012-single-plugin-package-layout.md) defines the package boundary.
+The repository root contains the shared Marketplace index, documentation and test harness. The index points at the single installable Plugin under `plugin/` (which Antigravity also installs directly). [ADR 0012](adr/0012-single-plugin-package-layout.md) defines the package boundary. [ADR 0013](adr/0013-cross-agent-plugin-distribution.md) defines the distribution channels.
 
 ~~~text
 .
-├─ .agents/plugins/marketplace.json
+├─ .claude-plugin/marketplace.json
 ├─ plugin/
-│  ├─ .codex-plugin/plugin.json
+│  ├─ plugin.json
+│  ├─ .claude-plugin/plugin.json
 │  ├─ README.md
 │  └─ skills/zen-one-tone-windows/
 │     ├─ SKILL.md
@@ -45,8 +46,8 @@ Do not add a shared runtime or cross-Plugin import layer. Reuse repository tooli
 
 ## Responsibilities
 
-- Marketplace manifest: list the installable `zen-one-tone-windows` Plugin envelope.
-- Plugin envelope: provide Codex metadata and own its Skill.
+- Marketplace indexes list the installable `zen-one-tone-windows` Plugin.
+- The Plugin package provides host metadata and contains the Skill.
 - Skill package: provide instructions, references, launcher and runtime for one capability.
 - Root test harness: run repository-wide marketplace, Plugin, Skill and runtime tests.
 - Palette: generate explicit Light/Dark Visual roles, preserve Mode coherence across one Seed Color, limit corresponding large-area OKLCH lightness difference to `0.75`, keep semantic text hues distinct in OKLCH, and validate text, region contrast and cross-Mode appearance.

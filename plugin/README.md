@@ -2,39 +2,13 @@
 
 [English](README.en.md)
 
-提供可独立分发的 `zen-one-tone-windows` Skill，用一个 Seed Color 统一 Windows 桌面、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 和 Chrome 本地主题。Cursor 暂不属于当前支持目标。
+提供可独立分发的 `zen-one-tone-windows` Skill，用一个主色（Seed Color）统一 Windows 桌面、壁纸、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 和 Chrome 本地主题。Cursor 暂不属于支持目标。
 
-## 安装
+## 安装与使用
 
-```powershell
-npm install -g skills
-skills add https://github.com/MuZiJin701/zen-computer-marketplace.git -g
-```
+首选通过 `skills` CLI 安装，也支持各主流 Agent 的原生插件安装命令；详细步骤与各宿主调用方式见[安装指南](https://github.com/MuZiJin701/zen-computer-marketplace#1-安装与更新)和[使用说明](https://github.com/MuZiJin701/zen-computer-marketplace#2-使用方法)。
 
-只安装到 Codex：
-
-```powershell
-skills add https://github.com/MuZiJin701/zen-computer-marketplace.git -g -a codex
-```
-
-可选的 Codex Plugin Marketplace：
-
-```powershell
-codex plugin marketplace add https://github.com/MuZiJin701/zen-computer-marketplace.git
-codex plugin add zen-one-tone-windows@zen-computer-marketplace
-```
-
-CC Switch：在 Skills 页面添加
-
-```text
-https://github.com/MuZiJin701/zen-computer-marketplace.git
-```
-
-然后安装 `zen-one-tone-windows`。
-
-在 Agent 中使用时，先[显式调用 Skill](../README.md#使用)。
-
-## 命令
+在 Skill 目录（`skills/zen-one-tone-windows/`）下可直接运行本地脚本：
 
 ```powershell
 python .\scripts\run_one_tone.py sync '#22C55E'
@@ -44,20 +18,15 @@ python .\scripts\run_one_tone.py verify plan-...
 python .\scripts\run_one_tone.py rollback --latest
 ```
 
-Seed Color 是 ChatGPT App、Antigravity 和 Windows 的 Theme anchor/Accent source；ChatGPT App 的 `surface`、Antigravity 的 `customThemeSeeds*` / `hubSurfaceBackgroundColor` 与 Windows 壁纸使用同一 Seed 派生的 Tonal surface，Light/Dark 大面积角色保持受控的明度跨度。ChatGPT App 会补齐缺失的 `fonts` table，保留已有字体值，并在两个 Mode 使用实心窗口与最高对比度。ChatGPT App、Antigravity、VS Code、TRAE 和 Antigravity IDE 跟随系统模式；Windows Terminal 同时注册浅深两套主题并默认启用 `One Tone Dark` 深色主题；Windows 本身不被切换，Chrome 主题仍需在 `chrome://extensions` 手动加载。Windows 自动取色开启时可能覆盖固定强调色。
-
-Skill runtime 位于当前目录，使用 `uv` 运行：
+也可以直接用 `uv` 查看命令帮助：
 
 ```powershell
 uv run --project . one-tone --help
 ```
 
-## 开发边界
+## 安全与使用说明
 
-终端正文在 Light/Dark 都要求受管背景 `7:1`，其他功能文字为 `4.5:1`。ANSI black 与正文/white 分开映射，brightBlack 使用次要文字色。Windows Terminal `>= 1.16` 的原生 `adjustIndistinguishableColors = always` 在 Preview 按可执行文件版本发现、纳入 Plan Hash，并覆盖 defaults、所有 Profile 和已有未聚焦配置；未知/旧版本保留字段并报告 `partial`。配置与 PSReadLine Profile 均由事务 Snapshot/补偿/Rollback 管理。
-
-PowerShell 命令和 Shell 发现使用 PowerShell 7 `pwsh`；不回退 Windows PowerShell，显式 `ONE_TONE_POWERSHELL_EXECUTABLE` 也必须验证为 Core `>= 7`。Profile 路径由该宿主在 Preview 提供，不改变 Windows Terminal 的默认 Profile。
-
-ChatGPT App 内嵌终端使用独立 xterm/CSS 色表，其完整 ANSI 和原生前景修正没有已验证的用户配置入口。`verified` 只表示配置匹配，`rendering_verification = untested` 单独说明渲染尚未验收。Skill 内 `python .\scripts\terminal_readability_sample.py` 输出 default、ANSI16/256、RGB、dim、reverse 和选择检查样例；同一脚本可以通过标准输入用于真实 SSH，远端配置保持不变。完整验收步骤见仓库 [测试说明](../docs/testing.md) 与 [证据记录](../docs/terminal-readability-evidence.md)。
-
-当前公开字段与实心外观策略已实施，完整版本门槛与保留项见 Skill [目标矩阵](skills/zen-one-tone-windows/references/targets.md)，固定来源和未验项见 [字段证据](../docs/theme-field-coverage-evidence.md)。Apply 关闭 Windows 透明效果，按版本关闭 Terminal Acrylic/Mica/背景图片和固定 tabColor，并将 ChatGPT App appearanceTheme 设为 system；字体与无关偏好保持不变。高对比度 API 开启/未知时 Windows skipped；未知 Workbench 基线安全 skipped。旧 Plan 要求重新 Preview，历史事务仍可独立恢复。本 Skill 保持独立 runtime，不依赖仓库根目录。
+- **先预览、再备份、可回滚**：`preview` 只生成计划不改系统；`apply` 修改每个应用前都会自动保存快照，失败目标自动回滚，也支持随时用 `rollback --latest` 恢复。
+- **保留个人习惯**：不会改动字体设置和无关偏好；若 Windows 开启了“自动从背景中选取强调色”，系统可能会覆盖固定主色。
+- **Chrome 主题**：工具会生成浅色和深色两套主题目录，需在 `chrome://extensions` 手动加载。
+- **独立边界**：本 Skill 包自带完整运行时，可独立于仓库根目录运行，支持目标与版本能力细节见 [目标矩阵](skills/zen-one-tone-windows/references/targets.md) 和 [测试说明](../docs/testing.md)。

@@ -18,3 +18,5 @@ The accepted decisions about field coverage, the canonical Plan Palette set, use
 [ADR 0010](0010-evidence-backed-appearance-policy.md) records pinned public/registered field intersections, hashed appearance-policy upgrades and independent historical Rollback. It implements the explicit system-following/solid appearance spec without rewriting earlier decision records.
 
 [ADR 0012](0012-single-plugin-package-layout.md) records the single-plugin source layout and the boundary of the installable package.
+
+[ADR 0013](0013-cross-agent-plugin-distribution.md) records the supported distribution channels and shared Skill package.

@@ -140,13 +140,17 @@ _Avoid_: 只校验 AccentPalette 注册表回读
 ### Target language
 
 **Marketplace**  
-仓库级的 Codex Plugin 安装索引，登记可安装的 Plugin 及其来源。
+仓库级的 Plugin 安装索引，登记可安装的 Plugin 及其来源。
 
 **Plugin**  
-可通过 Marketplace 安装的发布单元，包含一个或多个 Skill 及其随包资源。
+由 Agent 宿主安装的发布单元，包含 Skill 及其随包资源。宿主可通过 Marketplace 或直接从插件包安装。
 
 **Skill package**  
 包含指令、参考资料及配套运行时的能力单元，可以独立安装，也可以随 Plugin 分发。
+
+**Agent 宿主**
+
+安装和调用 One-Tone Skill 的 Agent 客户端。宿主支持描述的是分发与调用能力，Target 描述的是可统一主题的应用或系统。
 
 **Target**  
 一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT desktop app、Antigravity desktop app 或 Chrome。

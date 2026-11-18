@@ -5,7 +5,7 @@
 ~~~text
 tests/
 ├─ test_marketplace.py                   # Marketplace 安装索引
-├─ test_plugin.py                        # Codex Plugin 安装包
+├─ test_plugin.py                        # 共用 Plugin 安装包和宿主清单
 ├─ test_skill.py                         # 独立 Skill 包和运行入口
 └─ runtime/                              # 运行时行为和 fixtures
 ~~~

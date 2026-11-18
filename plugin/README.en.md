@@ -2,11 +2,13 @@
 
 [简体中文](README.md)
 
-This Plugin distributes one self-contained Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity and Chrome around an explicitly supplied Seed Color.
+Distributes the self-contained `zen-one-tone-windows` Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows desktop, wallpaper, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity, and Chrome around a single Seed Color. Cursor is not supported as a theme target.
 
-[Select the Skill explicitly](../README.en.md#use) to use it with an agent.
+## Install and use
 
-Use `sync` (one-step Preview → Apply → Verify) or the explicit Preview → confirmed Plan Apply → read-only Verify → Transaction Rollback workflow. From the Skill directory:
+`skills` CLI is recommended, and native plugin CLI installation is also supported for major agents. See the [installation guide](https://github.com/MuZiJin701/zen-computer-marketplace/blob/main/README.en.md#1-install-and-update) and [usage instructions](https://github.com/MuZiJin701/zen-computer-marketplace/blob/main/README.en.md#2-how-to-use).
+
+From the Skill directory (`skills/zen-one-tone-windows/`), you can run the CLI directly:
 
 ```powershell
 python .\scripts\run_one_tone.py sync '#22C55E'
@@ -16,12 +18,15 @@ python .\scripts\run_one_tone.py verify plan-...
 python .\scripts\run_one_tone.py rollback --latest
 ```
 
-Use the actual saved IDs. Preview writes only a Plan; no real theme is applied without confirmation. Apply snapshots each target, journals every operation and compensates only failed targets. Rollback restores its own snapshot, including formerly absent settings. Older Plans must be recreated for the current appearance policy; historical Transactions remain restorable.
+Or inspect the standalone package CLI with `uv`:
 
-Confirmed Apply disables Windows transparency, applies version-gated solid Terminal appearances and sets ChatGPT App appearance to `system`. Windows modes, automatic accent selection, high contrast and font preferences are preserved. Missing App font tables are repaired without inventing font values. High contrast active/unknown safely skips Windows; Shell taskbar limitations follow actual Shell mode.
+```powershell
+uv run --project . one-tone --help
+```
 
-Editor colors use the intersection of pinned public documentation and discovered Workbench `1.107.1`/`1.140.0` registrations. Unknown versions skip; private AI colors remain unsupported. Terminal paired Schemes require >=1.16; paired window themes/Mica require >=1.17; frame fields require >=1.22 and a compatible Windows platform. Unsupported settings remain unchanged and report partial. PowerShell prediction discovery uses only verified Core >=7 `pwsh`.
+## Notes
 
-Chrome generates 24 colors, 6 tints and applicable properties in two unpacked Light/Dark directories, with ZIPs as internal artifacts. Load the desired directory manually through `chrome://extensions`; no silent activation, browser-font or full-window-opacity control is claimed.
-
-Configuration verification checks complete managed artifacts; it does not establish visual acceptance. Real application/SSH rendering remains independently untested. See the Skill's [target matrix](skills/zen-one-tone-windows/references/targets.md), repository [testing guide](../docs/testing.md) and [field evidence](../docs/theme-field-coverage-evidence.md).
+- **Preview, backup, and rollback**: `preview` creates a read-only plan; `apply` snapshots each target before modifying it and automatically compensates failed targets. Undo anytime with `rollback --latest`.
+- **Personal settings preserved**: Fonts and unrelated preferences remain untouched. Turn off Windows "Automatically pick an accent color from my background" if Windows overrides the fixed accent color.
+- **Chrome themes**: Light and Dark unpacked extensions are generated and must be loaded manually in `chrome://extensions`.
+- **Self-contained runtime**: This Skill runs independently of the repository root. See the [target matrix](skills/zen-one-tone-windows/references/targets.md) and [testing guide](../docs/testing.md) for details.

@@ -2,75 +2,97 @@
 
 [简体中文](README.md)
 
-A cross-agent Skill marketplace for a simple, orderly computer workspace.
+Unify your Windows desktop, wallpaper, and everyday app themes around a single Seed Color. Currently ships the `zen-one-tone-windows` plugin and Skill.
 
-The repository distributes the `zen-one-tone-windows` Plugin and Skill to unify Windows, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity and Chrome around one Seed Color.
+- **Supported targets**: Windows desktop and wallpaper, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity, and Chrome.
+- **Supported OS**: Windows 10 22H2+ (build `>= 19045`) and Windows 11 22H2+ (build `>= 22621`). Cursor is not supported as a theme target.
 
-One-Tone supports Windows 10 22H2+ (build `>= 19045`) and Windows 11 22H2+ (build `>= 22621`). Cursor is currently unsupported.
+## 1. Install and update
 
-## Install
+Pick one installation method per host (`skills` CLI is recommended for most users).
 
-Install globally with the Vercel Labs Skills CLI for compatible agents:
+### Option 1: Using the `skills` CLI (recommended)
+
+Run the command below and choose your host (Codex, Claude Code, Antigravity, Grok Build, or GitHub Copilot CLI):
 
 ```powershell
 npm install -g skills
 skills add https://github.com/MuZiJin701/zen-computer-marketplace.git -g
 ```
 
-For Codex only, add `-a codex`. Without installing the CLI, use `npx skills add https://github.com/MuZiJin701/zen-computer-marketplace.git -g`. Restart Codex after installation; the CLI's global Codex Skill directory is `~/.codex/skills/`.
+To install for Codex only, add `-a codex`. If you do not want to install `skills` globally, prefix with `npx skills`.
+
+Manage the installed Skill:
 
 ```powershell
 skills list
-skills update zen-one-tone-windows
+skills update zen-one-tone-windows -g
 skills remove zen-one-tone-windows
 ```
 
-Alternatively use the Codex Plugin Marketplace:
+If you use `cc-switch`, add `https://github.com/MuZiJin701/zen-computer-marketplace.git` on the Skills page, refresh, and select `zen-one-tone-windows`.
 
-```powershell
-codex plugin marketplace add https://github.com/MuZiJin701/zen-computer-marketplace.git
-codex plugin add zen-one-tone-windows@zen-computer-marketplace
-```
+### Option 2: Native plugin CLI commands
 
-CC Switch users can add this repository in the Skills page, refresh and select `zen-one-tone-windows`.
+| Host | Install command |
+| --- | --- |
+| Codex | `codex plugin marketplace add https://github.com/MuZiJin701/zen-computer-marketplace.git`<br>`codex plugin add zen-one-tone-windows@zen-computer-marketplace` |
+| Claude Code | `claude plugin marketplace add MuZiJin701/zen-computer-marketplace`<br>`claude plugin install zen-one-tone-windows@zen-computer-marketplace` |
+| Antigravity | `agy plugin install https://github.com/MuZiJin701/zen-computer-marketplace` |
+| Grok Build | `grok plugin marketplace add MuZiJin701/zen-computer-marketplace`<br>`grok plugin install zen-one-tone-windows --trust` |
+| GitHub Copilot CLI | `copilot plugin marketplace add MuZiJin701/zen-computer-marketplace`<br>`copilot plugin install zen-one-tone-windows@zen-computer-marketplace` |
 
-## Use
+Open a new session after installing or updating.
 
-In Codex, type `$` and select `zen-one-tone-windows`. In Claude Code, use `/zen-one-tone-windows`. When you need to choose a Seed Color or target scope, the agent opens a selection dialog. You can then run `sync` (`Preview → Apply → Verify`) in one step or request a preview on its own.
+## 2. How to use
+
+To avoid unintended changes to your desktop, this Skill is **explicit-invocation only**. Select it explicitly before sending your request:
+
+- **Codex**: Type `$` and select `zen-one-tone-windows`
+- **Claude Code**: Use `/zen-one-tone-windows` (standalone Skill) or `/zen-one-tone-windows:zen-one-tone-windows` (plugin)
+- **Antigravity / Grok Build / Copilot CLI**: Invoke `/zen-one-tone-windows` or select it from the slash menu
+
+Tell the agent your chosen Seed Color (and any specific target scope if you do not want all targets):
 
 ```text
 Use $zen-one-tone-windows to unify my computer theme with green #22C55E.
 ```
 
-The theme workflow supports one-step `sync '#22C55E'` as well as explicit `preview` → confirmed Plan `apply` → read-only `verify` → `rollback --latest` (or explicit Transaction ID). Results distinguish `ok`, `partial`, `failed` and `skipped`.
+### Safe workflow and rollback
 
-## Theme scope
+- **One-step sync (`sync '#22C55E'`)**: Runs `Preview` (creates a read-only `Plan` without touching your PC), backs up and applies changes (`Apply`), and checks the result (`Verify`).
+- **Step-by-step mode**: You can also run `preview`, `apply plan-... --confirm`, and `verify plan-...` separately.
+- **Easy rollback**: Snapshots are saved automatically before each target is modified, and failed targets roll back on their own. You can undo anytime with `rollback --latest` or by specifying a `Transaction ID`.
+- **Result statuses**: Each target reports `ok`, `partial` (some fields kept unchanged due to app version limits), `failed`, or `skipped`.
 
-- Seed Color remains the Theme anchor/Accent source; ChatGPT App surfaces, Antigravity `customThemeSeeds*` / `hubSurfaceBackgroundColor` and Windows wallpaper use derived Tonal surfaces. Confirmed Apply disables Windows transparency, writes `AccentColorInactive` and `Control Panel\Colors\Background`, and sets ChatGPT App `appearanceTheme = system`, `accentSource = custom`, opaque windows and maximum contrast. Existing font values and unknown keys are preserved; missing font tables are repaired.
-- Windows Terminal covers defaults, every Profile and existing unfocused appearances. Verified versions disable Acrylic/Mica, use full opacity, clear background images and remove fixed `tabColor`; both `One Tone Light` and `One Tone Dark` Schemes and window themes are registered while window `theme`, `applicationTheme`, defaults and every Profile `colorScheme` default to `One Tone Dark` (`dark`). Unknown capabilities remain unchanged and report partial. Fonts and unrelated preferences are preserved. Shell discovery selects only PowerShell 7 (`pwsh`).
-- Terminal body text uses 7:1 on controlled backgrounds in both Modes; other functional text uses 4.5:1. ANSI black uses the tonal surface, white/brightWhite use primary text and brightBlack uses secondary text. Preview discovers executable versions; Windows Terminal >= 1.16 enables `adjustIndistinguishableColors = always` on defaults, every Profile and existing unfocused appearances, with configuration Verify and transaction rollback. Old/unknown versions preserve that setting and report partial.
-- The App embedded terminal has an independent xterm/CSS theme with no verified user entry for its complete ANSI table/native contrast correction. Configuration matching does not establish rendering acceptance for either host, application backgrounds, dim/reverse/selection, ANSI256, RGB or real SSH. Reports carry `rendering_verification = untested`.
-- VS Code, TRAE and Antigravity IDE intersect the pinned public inventory with discovered Workbench registrations, including menus, notifications, Quick Input, widgets, Diff, Chat, Merge, Notebook, Debug, Testing, Gauge, window borders and selection foreground. Standard C-drive paths (`%APPDATA%\<App>\User\settings.json` and `~/.<app>/extensions`) are prioritized without altering Scoop's directory structure, while any existing Scoop portable `data/` directory is mirrored in sync. Overlays retain alpha and use actual composited backgrounds for contrast. Private AI fields are unsupported.
-- Windows automatic Accent selection can override the fixed Accent; the tool reports that limitation without changing automatic selection or system appearance.
-- Chrome generates all 24 public colors, 6 tints and applicable properties in two canonical unpacked Light/Dark directories. ZIPs are internal artifacts; activation through `chrome://extensions` remains manual. Image alignment/repeat properties are omitted without an NTP image; browser fonts and window opacity remain unchanged.
-- `.one-tone` lives under the Skill runtime root regardless of the agent's current directory. Target paths are discovered from user directories, PATH, launcher inputs or environment variables, without fixed developer paths or Everything.
+## Usage tips
 
-## Repository and development
+- **Windows accent color and wallpaper**: Confirmed apply updates the desktop wallpaper and disables transparency effects. If Windows "Automatically pick an accent color from my background" is turned on, Windows may override the fixed accent color; turning that setting off is recommended.
+- **Manual Chrome extension step**: One-Tone generates Light and Dark unpacked Chrome theme folders. Open `chrome://extensions`, enable Developer Mode, and click "Load unpacked" to apply the mode you want.
+- **Light/Dark modes and terminal**: VS Code, TRAE, Antigravity IDE, ChatGPT App, and Antigravity follow the Windows system Light/Dark mode. Windows Terminal registers both `One Tone Light` and `One Tone Dark` and defaults to `One Tone Dark` (requires PowerShell 7 `pwsh`).
+- **Personal settings preserved**: Fonts and unrelated settings stay untouched. Unsupported fields in older app versions are left unchanged and reported as `partial`.
 
-`plugin/` contains the installable One-Tone Plugin and its independently distributable Skill. `tests/` contains distribution checks and runtime tests outside the Plugin package. `docs/` holds architecture, testing, specs and ADRs; [CONTEXT.md](CONTEXT.md) is the domain glossary. GitHub Issues track requests; agent collaboration rules live under `docs/agents/`.
+## Repository layout and development
 
-See the [One-Tone Skill](plugin/skills/zen-one-tone-windows/SKILL.md), [Target matrix](plugin/skills/zen-one-tone-windows/references/targets.md), [architecture](docs/architecture.md) and [testing](docs/testing.md).
+```text
+.
+├─ .claude-plugin/marketplace.json        # Shared Marketplace index
+├─ plugin/                                # Installable One-Tone plugin
+│  ├─ plugin.json                         # Agent Plugins 1.0 manifest
+│  ├─ .claude-plugin/plugin.json          # Claude Code manifest
+│  └─ skills/zen-one-tone-windows/        # Skill and standalone runtime
+├─ tests/                                 # Distribution and runtime tests
+├─ docs/                                  # Architecture, testing, and ADRs
+└─ CONTEXT.md                             # Domain glossary
+```
 
-Current terminal requirements are in the [readability spec](docs/specs/2026-10-05-terminal-readability.md), with [capability evidence and incomplete visual gates](docs/terminal-readability-evidence.md). Run the Skill's `python .\scripts\terminal_readability_sample.py` in each host and send it over stdin through the existing real SSH session. The script changes no configuration; emitted samples do not prove visual acceptance.
-
-The [field-coverage spec](docs/specs/2026-07-25-theme-field-coverage-and-separation.md) and [Shell/theme regression spec](docs/specs/2026-08-03-theme-regressions-and-portable-shell-integration.md) document the other accepted boundaries.
-
-The [development spec](docs/specs/2026-10-05-official-theme-coverage-and-slimming.md) is implemented with fixture regressions; [field evidence](docs/theme-field-coverage-evidence.md) records source baselines, capability limits and pending real UI acceptance. The new appearance policy and field contract are hashed into Plans: recreate older Plans through Preview; historical Transactions remain independently restorable.
+Run tests from the repository root or invoke the CLI directly from the Skill directory:
 
 ```powershell
 uv run pytest
 uv run --project plugin/skills/zen-one-tone-windows one-tone --help
-git diff --check
 ```
 
-From the Skill directory, use `python .\scripts\run_one_tone.py sync '#22C55E'` (or `preview '#22C55E'`, `apply plan-... --confirm`, `verify plan-...`, `rollback --latest`). Use PowerShell 7 (`pwsh`) for PowerShell commands. Real desktop/visual tests remain separate from the default fixture suite.
+From `plugin/skills/zen-one-tone-windows`, you can also run `python .\scripts\run_one_tone.py preview '#22C55E'` (as well as `sync`, `apply plan-... --confirm`, `verify plan-...`, and `rollback --latest`).
+
+See [CONTEXT.md](CONTEXT.md), [SKILL.md](plugin/skills/zen-one-tone-windows/SKILL.md), [targets.md](plugin/skills/zen-one-tone-windows/references/targets.md), [architecture.md](docs/architecture.md), [testing.md](docs/testing.md), and [ADRs](docs/adr/) for developer details.

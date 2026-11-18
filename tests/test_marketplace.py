@@ -3,14 +3,16 @@ from pathlib import Path
 
 
 def test_repo_marketplace_points_to_plugin():
-    payload = json.loads(Path(".agents/plugins/marketplace.json").read_text(encoding="utf-8"))
+    payload = json.loads(Path(".claude-plugin/marketplace.json").read_text(encoding="utf-8"))
     assert payload["name"] == "zen-computer-marketplace"
     (entry,) = payload["plugins"]
     assert entry["name"] == "zen-one-tone-windows"
-    assert entry["source"]["source"] == "local"
-    assert entry["source"]["path"] == "./plugin"
-    assert entry["policy"]["installation"] == "AVAILABLE"
-    assert entry["policy"]["authentication"] == "ON_INSTALL"
+    assert entry["source"] == "./plugin"
+
+
+def test_redundant_host_marketplaces_are_removed():
+    for removed in (".agents", ".github/plugin", ".grok-plugin", ".cursor-plugin"):
+        assert not Path(removed).exists(), removed
 
 
 def test_plugin_contains_skill_runtime_source():
@@ -41,7 +43,7 @@ def test_readmes_document_root_and_skill_runtime_commands():
 def test_readme_documents_repo_marketplace_and_plugin_runtime():
     root_readme = Path("README.md").read_text(encoding="utf-8")
     plugin_readme = Path("plugin/README.md").read_text(encoding="utf-8")
-    assert ".agents/plugins/marketplace.json" in root_readme
+    assert ".claude-plugin/marketplace.json" in root_readme
     assert "plugin/" in root_readme
     assert "可独立分发" in plugin_readme
 
