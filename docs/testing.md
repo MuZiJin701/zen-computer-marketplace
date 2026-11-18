@@ -6,11 +6,11 @@ Run from the repository root:
 
 ~~~powershell
 uv run pytest
-uv run --project plugins/zen-one-tone-windows/skills/zen-one-tone-windows one-tone --help
+uv run --project plugin/skills/zen-one-tone-windows one-tone --help
 git diff --check
 ~~~
 
-The root project is a test harness. The `zen-one-tone-windows` Skill owns its launcher and runtime; tests remain outside the distributable Skill and mirror the Marketplace → Plugin → Skill hierarchy.
+The root project is a test harness. `tests/` contains distribution checks and `tests/runtime/` contains runtime tests and fixtures. The `zen-one-tone-windows` Skill owns its launcher and runtime under `plugin/`.
 
 ## Required coverage for the theme-field work
 
@@ -33,7 +33,7 @@ Public coverage regressions use an independent fixture with 971 documented VS Co
 
 Windows regressions include mixed App/Shell modes, active/unknown high contrast, simulated API failure, actual Shell taskbar capability, transparency drift and absent-value restoration. Terminal covers version/platform gates, solid defaults/Profile/unfocused policies, removal of fixed tabColor and invalid Scheme selectionForeground, preservation of custom theme preferences and two native variants with `One Tone Dark` selected by default. ChatGPT tests repair missing semantic/font structures and verify system appearance plus every managed field. Editor discovery tests forwarded/versioned launchers, commit-subdirectory `package.json`, unknown baselines, standard C-drive priority + portable mirror, and exact contribution paths/types/labels; complete non-frame/token drift fails Verify without writes.
 
-Plan/Transaction regressions reject old appearance policies and changed field contracts before Transaction/Snapshot creation while keeping historical Rollback independent. Preview must report actual capability statuses and generated values. Python compilation is checked with `uv run python -m compileall -q plugins/zen-one-tone-windows/skills/zen-one-tone-windows/src`; no type checker or new dependency is installed. Source and visual limits are recorded in [field evidence](theme-field-coverage-evidence.md).
+Plan/Transaction regressions reject old appearance policies and changed field contracts before Transaction/Snapshot creation while keeping historical Rollback independent. Preview must report actual capability statuses and generated values. Python compilation is checked with `uv run python -m compileall -q plugin/skills/zen-one-tone-windows/src`; no type checker or new dependency is installed. Source and visual limits are recorded in [field evidence](theme-field-coverage-evidence.md).
 
 Tests cross the highest available Seam and assert external behavior:
 

@@ -57,9 +57,9 @@ The theme workflow supports one-step `sync '#22C55E'` as well as explicit `previ
 
 ## Repository and development
 
-`plugins/` holds the `zen-one-tone-windows` Plugin envelope and distributable Skill runtime. `tests/` mirrors Marketplace → Plugin → Skill and stays outside distributable Skills. `docs/` holds architecture, testing, specs and ADRs; [CONTEXT.md](CONTEXT.md) is the domain glossary. GitHub Issues track requests; agent collaboration rules live under `docs/agents/`.
+`plugin/` contains the installable One-Tone Plugin and its independently distributable Skill. `tests/` contains distribution checks and runtime tests outside the Plugin package. `docs/` holds architecture, testing, specs and ADRs; [CONTEXT.md](CONTEXT.md) is the domain glossary. GitHub Issues track requests; agent collaboration rules live under `docs/agents/`.
 
-See the [One-Tone Skill](plugins/zen-one-tone-windows/skills/zen-one-tone-windows/SKILL.md), [Target matrix](plugins/zen-one-tone-windows/skills/zen-one-tone-windows/references/targets.md), [architecture](docs/architecture.md) and [testing](docs/testing.md).
+See the [One-Tone Skill](plugin/skills/zen-one-tone-windows/SKILL.md), [Target matrix](plugin/skills/zen-one-tone-windows/references/targets.md), [architecture](docs/architecture.md) and [testing](docs/testing.md).
 
 Current terminal requirements are in the [readability spec](docs/specs/2026-10-05-terminal-readability.md), with [capability evidence and incomplete visual gates](docs/terminal-readability-evidence.md). Run the Skill's `python .\scripts\terminal_readability_sample.py` in each host and send it over stdin through the existing real SSH session. The script changes no configuration; emitted samples do not prove visual acceptance.
 
@@ -69,7 +69,7 @@ The [development spec](docs/specs/2026-10-05-official-theme-coverage-and-slimmin
 
 ```powershell
 uv run pytest
-uv run --project plugins/zen-one-tone-windows/skills/zen-one-tone-windows one-tone --help
+uv run --project plugin/skills/zen-one-tone-windows one-tone --help
 git diff --check
 ```
 

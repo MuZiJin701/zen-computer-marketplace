@@ -88,15 +88,15 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 ```text
 .
 ├─ .agents/plugins/marketplace.json       # Marketplace 清单
-├─ plugins/                               # 可安装的 Plugin
-│  └─ zen-one-tone-windows/               # zen-one-tone-windows Plugin
-│     └─ skills/zen-one-tone-windows/     # zen-one-tone-windows Skill 与 runtime
-├─ tests/                                 # Marketplace、Plugin、Skill 测试
+├─ plugin/                                # 可安装的 One-Tone Plugin
+│  ├─ .codex-plugin/plugin.json            # Codex 插件清单
+│  └─ skills/zen-one-tone-windows/         # Skill 与独立运行时
+├─ tests/                                 # 分发检查及 tests/runtime/ 运行时测试
 ├─ docs/                                  # 架构、测试、ADR 和开发说明
 └─ CONTEXT.md                             # 项目领域词汇
 ```
 
-更多细节见 [领域上下文](CONTEXT.md)、[zen-one-tone-windows Skill](plugins/zen-one-tone-windows/skills/zen-one-tone-windows/SKILL.md)、[目标矩阵](plugins/zen-one-tone-windows/skills/zen-one-tone-windows/references/targets.md) 和 [测试说明](docs/testing.md)。任务使用 GitHub Issues；Agent 协作配置见 docs/agents/。
+更多细节见 [领域上下文](CONTEXT.md)、[zen-one-tone-windows Skill](plugin/skills/zen-one-tone-windows/SKILL.md)、[目标矩阵](plugin/skills/zen-one-tone-windows/references/targets.md) 和 [测试说明](docs/testing.md)。任务使用 GitHub Issues；Agent 协作配置见 docs/agents/。
 
 ## 开发说明
 

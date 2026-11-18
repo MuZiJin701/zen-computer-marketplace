@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def test_plugin_scaffold_is_present():
-    root = Path("plugins/zen-one-tone-windows")
+    root = Path("plugin")
     assert (root / ".codex-plugin/plugin.json").is_file()
     assert not (root / "pyproject.toml").exists()
     assert (root / "skills/zen-one-tone-windows/SKILL.md").is_file()
@@ -17,9 +17,11 @@ def test_plugin_scaffold_is_present():
 
 
 def test_skill_package_does_not_include_repository_tests_or_archive():
-    root = Path("plugins/zen-one-tone-windows/skills/zen-one-tone-windows")
-    assert not (root / "tests").exists()
-    assert not (root / "docs").exists()
+    plugin = Path("plugin")
+    skill = plugin / "skills/zen-one-tone-windows"
+    for root in (plugin, skill):
+        assert not (root / "tests").exists()
+        assert not (root / "docs").exists()
 
 
 def test_generated_runtime_directories_are_ignored():

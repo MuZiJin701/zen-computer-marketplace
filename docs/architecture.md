@@ -2,28 +2,25 @@
 
 ## Marketplace shape
 
-The repository root is the Marketplace. It contains the Marketplace manifest, shared active documentation, the root test harness and one or more Plugin packages.
+The repository root contains the Marketplace index, documentation and test harness. The index points at the single installable Plugin under `plugin/`. [ADR 0012](adr/0012-single-plugin-package-layout.md) defines the package boundary.
 
 ~~~text
 .
 ├─ .agents/plugins/marketplace.json
-├─ plugins/
+├─ plugin/
+│  ├─ .codex-plugin/plugin.json
 │  ├─ README.md
-│  └─ <plugin-name>/
-│     ├─ .codex-plugin/plugin.json
-│     ├─ README.md
-│     └─ skills/
-│        └─ <skill-name>/
-│           ├─ SKILL.md
-│           ├─ agents/
-│           ├─ references/
-│           ├─ scripts/
-│           └─ runtime project
+│  └─ skills/zen-one-tone-windows/
+│     ├─ SKILL.md
+│     ├─ agents/
+│     ├─ references/
+│     ├─ scripts/
+│     └─ runtime project
 ├─ tests/
-│  ├─ README.md
-│  ├─ marketplace/
-│  └─ plugins/<plugin-name>/skills/<skill-name>/
-│     └─ runtime/
+│  ├─ test_marketplace.py
+│  ├─ test_plugin.py
+│  ├─ test_skill.py
+│  └─ runtime/
 ├─ docs/
 │  ├─ agents/
 │  ├─ specs/
@@ -72,33 +69,4 @@ Appearance policy v4 disables Windows transparency, applies version/platform-gat
 
 Verify compares complete Light/Dark artifacts and exact editor contributions, rather than representative frame colors. Preview reports actual capabilities and generated values without writing artifacts. Chrome activation, private AI fields and full embedded-terminal controls remain limited; rendering remains untested. See [field evidence](theme-field-coverage-evidence.md).
 
-Tests mirror the distribution hierarchy:
-
-- marketplace tests validate the manifest and cross-package indexes;
-- Plugin tests validate the Codex envelope;
-- Skill tests validate the distributable Skill package;
-- runtime tests live below the matching Plugin and Skill so a future Plugin cannot accidentally reuse another Plugin's fixtures or assumptions.
-
-## Structure audit
-
-### Correct choices
-
-- The Marketplace manifest is separate from Plugin metadata.
-- The `zen-one-tone-windows` Plugin owns the complete One-Tone Skill runtime.
-- The root harness is not packaged as a runtime distribution.
-- Tests can exercise the Skill source without being shipped with it.
-
-### Costs kept explicit
-
-- The Skill path is deep because the distribution boundary is real.
-- The root harness and Skill runtime have separate uv projects; commands must name which project they target.
-
-### Rules for future Plugins
-
-1. Add one direct child under plugins.
-2. Add one local Plugin envelope and README.
-3. Put every Skill under that Plugin's skills directory.
-4. Keep each Skill runtime self-contained.
-5. Add matching tests under tests/plugins/<plugin>/skills/<skill>/.
-6. Register only the Plugin envelope in the Marketplace manifest.
-7. Do not move shared code into a root runtime until a second real implementation needs it and the seam has been reviewed.
+The root `tests/` files check Marketplace registration, the Plugin envelope and the independently installable Skill. `tests/runtime/` exercises the Skill runtime with its fixtures. The root harness and Skill runtime have separate uv projects.

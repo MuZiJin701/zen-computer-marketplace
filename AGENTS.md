@@ -22,14 +22,14 @@ Triage 使用默认的五个状态标签；分类、状态映射和更新规则�
 Preview → Apply → Verify → Rollback
 ~~~
 
-支持范围以 `zen-one-tone-windows` 的 Target 矩阵（`plugins/zen-one-tone-windows/skills/zen-one-tone-windows/references/targets.md`）为准，不根据相似应用猜测兼容性。
+支持范围以 `zen-one-tone-windows` 的 Target 矩阵（`plugin/skills/zen-one-tone-windows/references/targets.md`）为准，不根据相似应用猜测兼容性。
 当前平台范围包括 Windows 10 22H2+（build >= 19045）和 Windows 11 22H2+（build >= 22621）。
 
 ## 仓库结构
 
-- plugins/：Marketplace 下的可安装 Plugin 包；当前仅维护 `zen-one-tone-windows`。
-- plugins/zen-one-tone-windows/skills/zen-one-tone-windows/：`zen-one-tone-windows` 中可独立分发的 Skill 包和唯一运行时项目。
-- tests/：按 Marketplace → Plugin → Skill 组织的根仓库测试，不随 Skill 分发。
+- plugin/：Marketplace 指向的可安装 Plugin 包。
+- plugin/skills/zen-one-tone-windows/：`zen-one-tone-windows` 中可独立分发的 Skill 包和唯一运行时项目。
+- tests/：根目录下的分发检查和 `tests/runtime/` 下的运行时测试，均留在 Plugin 包之外。
 - docs/：架构、测试、Agent 协作配置和 ADR。
 - 根目录 pyproject.toml：仅用于开发和测试，不安装运行时包。
 
@@ -75,7 +75,7 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 
 ~~~powershell
 uv run pytest
-uv run --project plugins/zen-one-tone-windows/skills/zen-one-tone-windows one-tone --help
+uv run --project plugin/skills/zen-one-tone-windows one-tone --help
 git diff --check
 ~~~
 

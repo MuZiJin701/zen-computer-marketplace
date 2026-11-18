@@ -32,7 +32,7 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 然后安装 `zen-one-tone-windows`。
 
-在 Agent 中使用时，先[显式调用 Skill](../../README.md#使用)。
+在 Agent 中使用时，先[显式调用 Skill](../README.md#使用)。
 
 ## 命令
 
@@ -58,6 +58,6 @@ uv run --project . one-tone --help
 
 PowerShell 命令和 Shell 发现使用 PowerShell 7 `pwsh`；不回退 Windows PowerShell，显式 `ONE_TONE_POWERSHELL_EXECUTABLE` 也必须验证为 Core `>= 7`。Profile 路径由该宿主在 Preview 提供，不改变 Windows Terminal 的默认 Profile。
 
-ChatGPT App 内嵌终端使用独立 xterm/CSS 色表，其完整 ANSI 和原生前景修正没有已验证的用户配置入口。`verified` 只表示配置匹配，`rendering_verification = untested` 单独说明渲染尚未验收。Skill 内 `python .\scripts\terminal_readability_sample.py` 输出 default、ANSI16/256、RGB、dim、reverse 和选择检查样例；同一脚本可以通过标准输入用于真实 SSH，远端配置保持不变。完整验收步骤见仓库 [测试说明](../../docs/testing.md) 与 [证据记录](../../docs/terminal-readability-evidence.md)。
+ChatGPT App 内嵌终端使用独立 xterm/CSS 色表，其完整 ANSI 和原生前景修正没有已验证的用户配置入口。`verified` 只表示配置匹配，`rendering_verification = untested` 单独说明渲染尚未验收。Skill 内 `python .\scripts\terminal_readability_sample.py` 输出 default、ANSI16/256、RGB、dim、reverse 和选择检查样例；同一脚本可以通过标准输入用于真实 SSH，远端配置保持不变。完整验收步骤见仓库 [测试说明](../docs/testing.md) 与 [证据记录](../docs/terminal-readability-evidence.md)。
 
-当前公开字段与实心外观策略已实施，完整版本门槛与保留项见 Skill [目标矩阵](skills/zen-one-tone-windows/references/targets.md)，固定来源和未验项见 [字段证据](../../docs/theme-field-coverage-evidence.md)。Apply 关闭 Windows 透明效果，按版本关闭 Terminal Acrylic/Mica/背景图片和固定 tabColor，并将 ChatGPT App appearanceTheme 设为 system；字体与无关偏好保持不变。高对比度 API 开启/未知时 Windows skipped；未知 Workbench 基线安全 skipped。旧 Plan 要求重新 Preview，历史事务仍可独立恢复。本 Skill 保持独立 runtime，不依赖仓库根目录。
+当前公开字段与实心外观策略已实施，完整版本门槛与保留项见 Skill [目标矩阵](skills/zen-one-tone-windows/references/targets.md)，固定来源和未验项见 [字段证据](../docs/theme-field-coverage-evidence.md)。Apply 关闭 Windows 透明效果，按版本关闭 Terminal Acrylic/Mica/背景图片和固定 tabColor，并将 ChatGPT App appearanceTheme 设为 system；字体与无关偏好保持不变。高对比度 API 开启/未知时 Windows skipped；未知 Workbench 基线安全 skipped。旧 Plan 要求重新 Preview，历史事务仍可独立恢复。本 Skill 保持独立 runtime，不依赖仓库根目录。

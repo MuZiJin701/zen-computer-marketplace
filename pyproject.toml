@@ -13,4 +13,4 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["plugins/zen-one-tone-windows/skills/zen-one-tone-windows/src"]
+pythonpath = ["plugin/skills/zen-one-tone-windows/src"]

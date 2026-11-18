@@ -8,7 +8,7 @@
       "name": "zen-one-tone-windows",
       "source": {
         "source": "local",
-        "path": "./plugins/zen-one-tone-windows"
+        "path": "./plugin"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -140,13 +140,13 @@ _Avoid_: 只校验 AccentPalette 注册表回读
 ### Target language
 
 **Marketplace**  
-仓库级的 Codex Plugin 安装索引；只负责登记可安装的 Plugin，不承载插件运行时。
+仓库级的 Codex Plugin 安装索引，登记可安装的 Plugin 及其来源。
 
 **Plugin**  
-一个可安装的插件包，包含 `.codex-plugin/plugin.json`、插件说明和一个或多个 Skill。
+可通过 Marketplace 安装的发布单元，包含一个或多个 Skill 及其随包资源。
 
 **Skill package**  
-Plugin 内可独立分发的能力单元；其说明、引用资料、脚本和运行时项目都放在同一个 Skill 目录内。
+包含指令、参考资料及配套运行时的能力单元，可以独立安装，也可以随 Plugin 分发。
 
 **Target**  
 一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT desktop app、Antigravity desktop app 或 Chrome。

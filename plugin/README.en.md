@@ -4,7 +4,7 @@
 
 This Plugin distributes one self-contained Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity and Chrome around an explicitly supplied Seed Color.
 
-[Select the Skill explicitly](../../README.en.md#use) to use it with an agent.
+[Select the Skill explicitly](../README.en.md#use) to use it with an agent.
 
 Use `sync` (one-step Preview → Apply → Verify) or the explicit Preview → confirmed Plan Apply → read-only Verify → Transaction Rollback workflow. From the Skill directory:
 
@@ -24,4 +24,4 @@ Editor colors use the intersection of pinned public documentation and discovered
 
 Chrome generates 24 colors, 6 tints and applicable properties in two unpacked Light/Dark directories, with ZIPs as internal artifacts. Load the desired directory manually through `chrome://extensions`; no silent activation, browser-font or full-window-opacity control is claimed.
 
-Configuration verification checks complete managed artifacts; it does not establish visual acceptance. Real application/SSH rendering remains independently untested. See the Skill's [target matrix](skills/zen-one-tone-windows/references/targets.md), repository [testing guide](../../docs/testing.md) and [field evidence](../../docs/theme-field-coverage-evidence.md).
+Configuration verification checks complete managed artifacts; it does not establish visual acceptance. Real application/SSH rendering remains independently untested. See the Skill's [target matrix](skills/zen-one-tone-windows/references/targets.md), repository [testing guide](../docs/testing.md) and [field evidence](../docs/theme-field-coverage-evidence.md).

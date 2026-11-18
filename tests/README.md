@@ -1,18 +1,14 @@
 # Tests
 
-测试目录按 Marketplace → Plugin → Skill 的层级组织：
+分发检查和运行时测试都由根项目运行。
 
 ~~~text
 tests/
-├─ marketplace/                         # Marketplace manifest 和索引
-├─ plugins/<plugin-name>/               # Plugin envelope
-│  ├─ test_plugin.py                    # Plugin contract
-│  └─ skills/<skill-name>/              # Skill package contract
-│     ├─ test_skill.py
-│     └─ runtime/                       # 该 Skill runtime 的行为
+├─ test_marketplace.py                   # Marketplace 安装索引
+├─ test_plugin.py                        # Codex Plugin 安装包
+├─ test_skill.py                         # 独立 Skill 包和运行入口
+└─ runtime/                              # 运行时行为和 fixtures
 ~~~
-
-当前 runtime 测试位于 `tests/plugins/zen-one-tone-windows/skills/zen-one-tone-windows/runtime/`，与可分发 Skill 的目录边界对应。
 
 默认测试使用临时目录和 fake backend，不触碰真实桌面或已安装应用。真实桌面测试必须单独标记并说明风险。
 
