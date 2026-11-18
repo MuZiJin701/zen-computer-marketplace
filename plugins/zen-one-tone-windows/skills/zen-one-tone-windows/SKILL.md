@@ -1,7 +1,8 @@
 ---
 name: zen-one-tone-windows
 description: >-
-  当用户希望使用一个主色统一受支持的 Windows 目标，或希望预览、验证、回滚主题时使用。
+  用一个主色统一受支持的 Windows 目标，支持预览、验证和回滚主题。
+disable-model-invocation: true
 ---
 
 # 统一 Windows 主题

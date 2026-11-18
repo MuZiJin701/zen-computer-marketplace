@@ -36,7 +36,7 @@ CC Switch users can add this repository in the Skills page, refresh and select `
 
 ## Use
 
-Tell your agent what you need. When a Seed Color or target scope needs to be chosen, the agent prompts with a selection popup card and can then run `sync` (`Preview → Apply → Verify`) in one step without pausing for plain-text confirmation.
+In Codex, type `$` and select `zen-one-tone-windows`. In Claude Code, use `/zen-one-tone-windows`. When you need to choose a Seed Color or target scope, the agent opens a selection dialog. You can then run `sync` (`Preview → Apply → Verify`) in one step or request a preview on its own.
 
 ```text
 Use $zen-one-tone-windows to unify my computer theme with green #22C55E.

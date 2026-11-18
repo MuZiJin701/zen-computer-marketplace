@@ -54,7 +54,7 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 ## 使用
 
-直接告诉 Agent 你要做什么。若未指定颜色或需要选择范围，Agent 会通过弹窗卡片让你点选；选定后可直接通过 `sync` 一站式完成 `Preview → Apply → Verify`，或按需单独预览。
+在 Codex 中输入 `$` 并选中 `zen-one-tone-windows`，在 Claude Code 中使用 `/zen-one-tone-windows`。若未指定颜色或需要选择范围，Agent 会通过弹窗卡片让你点选。选定后可通过 `sync` 一次完成 `Preview → Apply → Verify`，也可单独预览。
 
 ### 统一 Windows 主题
 

@@ -3,4 +3,4 @@ interface:
   short_description: "从单个主色安全统一 Windows 应用主题"
   default_prompt: "使用 $zen-one-tone-windows 根据我指定的颜色预览并安全统一 Windows 主题。"
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

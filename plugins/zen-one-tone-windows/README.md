@@ -32,6 +32,8 @@ https://github.com/MuZiJin701/zen-computer-marketplace.git
 
 然后安装 `zen-one-tone-windows`。
 
+在 Agent 中使用时，先[显式调用 Skill](../../README.md#使用)。
+
 ## 命令
 
 ```powershell

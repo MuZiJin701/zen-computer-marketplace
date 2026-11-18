@@ -4,6 +4,8 @@
 
 This Plugin distributes one self-contained Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity and Chrome around an explicitly supplied Seed Color.
 
+[Select the Skill explicitly](../../README.en.md#use) to use it with an agent.
+
 Use `sync` (one-step Preview → Apply → Verify) or the explicit Preview → confirmed Plan Apply → read-only Verify → Transaction Rollback workflow. From the Skill directory:
 
 ```powershell
