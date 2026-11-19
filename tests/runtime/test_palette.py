@@ -171,6 +171,7 @@ def test_zen_palette_avoids_seed_semantic_collisions_and_keeps_structural_border
             for role in ("error_text", "warning_text", "success_text", "info_text", "purple_text", "cyan_text"):
                 assert contrast_ratio(palette[role], palette["surface"]) >= 4.5
                 assert _oklch_hue_distance(palette["accent_text"], palette[role]) >= 0.045
+            assert 0.035 <= _oklch_components(palette["surface"])[1] <= 0.06
 
 
 def test_explicit_modes_preserve_coherent_tones_and_accent_identity():

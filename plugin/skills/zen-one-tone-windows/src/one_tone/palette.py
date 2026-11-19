@@ -497,17 +497,17 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     seed = _to_hex(parse_hex_color(seed_color))
     _lightness, seed_chroma, hue = _oklch_components(seed)
     if mode == "dark":
-        tonal_chroma = min(0.026, max(0.008, seed_chroma * 0.14))
-        background = _oklch_color(hue, 0.185, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.215, tonal_chroma)
-        surface = _oklch_color(hue, 0.250, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.295, tonal_chroma)
+        tonal_chroma = min(0.044, max(0.012, seed_chroma * 0.24))
+        background = _oklch_color(hue, 0.190, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.220, tonal_chroma)
+        surface = _oklch_color(hue, 0.255, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.300, tonal_chroma)
     else:
-        tonal_chroma = min(0.018, max(0.006, seed_chroma * 0.10))
-        background = _oklch_color(hue, 0.890, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.920, tonal_chroma)
-        surface = _oklch_color(hue, 0.950, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.980, tonal_chroma)
+        tonal_chroma = min(0.056, max(0.012, seed_chroma * 0.34))
+        background = _oklch_color(hue, 0.840, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.875, tonal_chroma)
+        surface = _oklch_color(hue, 0.915, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.950, tonal_chroma)
     background_foreground = _readable_foreground((background,), 7)
     foreground = _readable_foreground(
         (surface,), 7, minimum_lightness=2 if mode == "light" else 4
@@ -516,15 +516,15 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     accent = _contrast_safe_accent(seed, surface, preserve_identity=True, allow_low_chroma=True)
     _accent_lightness, accent_chroma, accent_hue = _oklch_components(accent)
     surface_lightness = _oklch_components(surface)[0]
-    selection_chroma = min(0.085, max(0.022, accent_chroma * 0.45)) if seed_chroma >= 0.035 else 0.02
-    selection_lightness = 0.82 if mode == "light" else 0.36
+    selection_chroma = min(0.095, max(0.025, accent_chroma * 0.50)) if seed_chroma >= 0.035 else 0.02
+    selection_lightness = 0.78 if mode == "light" else 0.37
     selection_background = _oklch_color(accent_hue, selection_lightness, selection_chroma)
     if (
         contrast_ratio(selection_background, surface) < 1.35
         or contrast_ratio(_readable_foreground((selection_background,), 4.5), selection_background) < 4.5
     ):
-        selection_background = _oklch_color(accent_hue, 0.78 if mode == "light" else 0.40, selection_chroma)
-    border_chroma = min(0.042, max(0.012, seed_chroma * 0.22)) if seed_chroma >= 0.035 else 0.012
+        selection_background = _oklch_color(accent_hue, 0.74 if mode == "light" else 0.41, selection_chroma)
+    border_chroma = min(0.058, max(0.014, seed_chroma * 0.30)) if seed_chroma >= 0.035 else 0.012
     border_lightness = surface_lightness - 0.11 if mode == "light" else surface_lightness + 0.13
     border = _oklch_color(accent_hue, max(0.08, min(0.92, border_lightness)), border_chroma)
     if contrast_ratio(border, surface) < 1.25:
