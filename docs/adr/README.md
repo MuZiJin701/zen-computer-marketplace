@@ -20,3 +20,5 @@ The accepted decisions about field coverage, the canonical Plan Palette set, use
 [ADR 0012](0012-single-plugin-package-layout.md) records the single-plugin source layout and the boundary of the installable package.
 
 [ADR 0013](0013-cross-agent-plugin-distribution.md) records the supported distribution channels and shared Skill package.
+
+[ADR 0014](0014-windows-desktop-wallpaper-mode-matching-and-palette-refinement.md) records `IDesktopWallpaper` multi-monitor sync/verification, effective Windows mode matching without a daemon, OKLCH palette hierarchy/ANSI refinement, and the Terminal Light theme fix.

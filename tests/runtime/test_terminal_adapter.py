@@ -162,11 +162,15 @@ def test_terminal_apply_registers_and_selects_a_valid_scheme(tmp_path):
     assert contrast_ratio(scheme["foreground"], scheme["black"]) >= 7
     assert contrast_ratio(scheme["white"], scheme["black"]) >= 4.5
     assert contrast_ratio(scheme["brightBlack"], scheme["background"]) >= 4.5
-    assert scheme["cyan"] == palette["accent_text"]
+    assert scheme["cyan"] == palette["cyan_text"]
+    assert scheme["blue"] == palette["info_text"]
+    assert scheme["purple"] == palette["purple_text"]
     assert scheme["green"] == palette["success_text"]
     assert theme["tabRow"]["background"] == palette["surface_subtle"]
     assert "frame" not in theme["window"]  # unknown version/platform
     assert theme["window"]["applicationTheme"] == "dark"
+    light_theme = next(item for item in changed["themes"] if item["name"] == "One Tone Light")
+    assert light_theme["window"]["applicationTheme"] == "light"
     assert applied.metadata["field_capabilities"]["window.frame"] == "unsupported"
     assert applied.metadata["field_capabilities"]["profile.tabColor"] == "unsupported"
     assert "profile.tabColor" not in applied.metadata["generated_values"]
@@ -190,7 +194,7 @@ def test_terminal_functional_text_on_generated_backgrounds(tmp_path, seed):
         assert contrast_ratio(plan.palette_for(mode.lower())["selection_foreground"], scheme["selectionBackground"]) >= 4.5
         for field in ("brightBlack", "red", "green", "yellow", "blue", "purple", "cyan"):
             assert contrast_ratio(scheme[field], scheme["background"]) >= 4.5
-        assert len({scheme[field] for field in ("red", "green", "yellow", "blue")}) == 4
+        assert len({scheme[field] for field in ("red", "green", "yellow", "blue", "purple", "cyan")}) == 6
 
 
 @pytest.mark.parametrize("version,supported", [("1.25.2609.30003", True), ("1.15.0.0", False), ("unknown", False)])

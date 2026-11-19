@@ -175,12 +175,13 @@ def _scheme_colors(plan: Plan, mode: str | None = None) -> dict[str, str]:
 
 
 def _theme_colors(plan: Plan, mode: str | None = None, capabilities: Mapping[str, str] | None = None) -> dict[str, Any]:
-    palette = plan.palette_for(mode or "dark")
+    resolved_mode = mode or "dark"
+    palette = plan.palette_for(resolved_mode)
     name = _THEME_NAME if mode is None else f"{_THEME_NAME} {mode.title()}"
     theme = {
         "name": name,
         "window": {
-            "applicationTheme": "dark",
+            "applicationTheme": resolved_mode,
             "frame": palette[terminal_palette_key("window.frame")],
             "unfocusedFrame": palette[terminal_palette_key("window.unfocusedFrame")],
         },

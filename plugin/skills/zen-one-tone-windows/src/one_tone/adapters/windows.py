@@ -4,7 +4,9 @@ import base64
 import ctypes
 from ctypes import wintypes
 import json
+import os
 import struct
+import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -115,14 +117,30 @@ class InMemoryDesktopBackend:
     def get_high_contrast(self) -> bool | None:
         return False
 
-    def __init__(self, wallpaper: str = "") -> None:
+    def __init__(self, wallpaper: str = "", background_color: str | None = None, monitor_count: int = 1) -> None:
         self.wallpaper = wallpaper
+        self.background_color = background_color
+        self.monitor_wallpapers: list[str] | None = [wallpaper] * monitor_count if monitor_count > 1 else None
 
     def get_wallpaper(self) -> str:
         return self.wallpaper
 
+    def get_wallpapers(self) -> list[str] | None:
+        if self.monitor_wallpapers is not None:
+            return list(self.monitor_wallpapers)
+        return None
+
     def set_wallpaper(self, path: str) -> bool:
         self.wallpaper = path
+        if self.monitor_wallpapers is not None:
+            self.monitor_wallpapers = [path for _ in self.monitor_wallpapers]
+        return True
+
+    def get_background_color(self) -> str | None:
+        return self.background_color
+
+    def set_background_color(self, color: str) -> bool:
+        self.background_color = color.upper()
         return True
 
     def refresh_theme(self) -> None:
@@ -185,6 +203,201 @@ class WindowsRegistryBackend:
             return
 
 
+class _GUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", wintypes.DWORD),
+        ("Data2", wintypes.WORD),
+        ("Data3", wintypes.WORD),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+
+class _RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", wintypes.LONG),
+        ("top", wintypes.LONG),
+        ("right", wintypes.LONG),
+        ("bottom", wintypes.LONG),
+    ]
+
+
+_CLSID_DESKTOP_WALLPAPER = _GUID(
+    0xC2CF3110,
+    0x460E,
+    0x4FC1,
+    (ctypes.c_ubyte * 8)(0xB9, 0xD0, 0x8A, 0x1C, 0x0C, 0x9C, 0xC4, 0xBD),
+)
+_IID_IDESKTOP_WALLPAPER = _GUID(
+    0xB92B56A9,
+    0x8B55,
+    0x4E14,
+    (ctypes.c_ubyte * 8)(0x9A, 0x89, 0x01, 0x99, 0xBB, 0xB6, 0xF9, 0x3B),
+)
+_DWPOS_FILL = 4
+
+
+def _hex_to_colorref(color: str) -> int:
+    red, green, blue = parse_hex_color(color)
+    return (blue << 16) | (green << 8) | red
+
+
+def _colorref_to_hex(colorref: int) -> str:
+    red = colorref & 0xFF
+    green = (colorref >> 8) & 0xFF
+    blue = (colorref >> 16) & 0xFF
+    return f"#{red:02X}{green:02X}{blue:02X}"
+
+
+def _rgb_string_to_hex(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split()
+    if len(parts) != 3:
+        return None
+    try:
+        red, green, blue = (int(part) for part in parts)
+    except ValueError:
+        return None
+    if not all(0 <= channel <= 255 for channel in (red, green, blue)):
+        return None
+    return f"#{red:02X}{green:02X}{blue:02X}"
+
+
+def _normalize_wallpaper_path(path: str) -> str:
+    if not path:
+        return ""
+    return os.path.normcase(os.path.normpath(path))
+
+
+class _DesktopWallpaperCOM:
+    """Minimal stdlib ctypes wrapper for Windows IDesktopWallpaper."""
+
+    def __init__(self) -> None:
+        self._ole32 = None
+        self._ptr = ctypes.c_void_p()
+        self._vtable = None
+        self._should_uninit = False
+
+    def __enter__(self) -> _DesktopWallpaperCOM | None:
+        if not hasattr(ctypes, "windll") or not hasattr(ctypes.windll, "ole32"):
+            return None
+        ole32 = ctypes.windll.ole32
+        ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+        ole32.CoInitializeEx.restype = ctypes.c_long
+        ole32.CoUninitialize.argtypes = []
+        ole32.CoCreateInstance.argtypes = [
+            ctypes.POINTER(_GUID),
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(_GUID),
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        ole32.CoCreateInstance.restype = ctypes.c_long
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        hr_init = ole32.CoInitializeEx(None, 0x2)
+        if hr_init in (0, 1):
+            self._should_uninit = True
+        ptr = ctypes.c_void_p()
+        hr = ole32.CoCreateInstance(
+            ctypes.byref(_CLSID_DESKTOP_WALLPAPER),
+            None,
+            4,  # CLSCTX_LOCAL_SERVER
+            ctypes.byref(_IID_IDESKTOP_WALLPAPER),
+            ctypes.byref(ptr),
+        )
+        if hr < 0 or not ptr.value:
+            if self._should_uninit:
+                ole32.CoUninitialize()
+                self._should_uninit = False
+            return None
+        self._ole32 = ole32
+        self._ptr = ptr
+        self._vtable = ctypes.cast(ptr, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        if self._vtable is not None and self._ptr.value:
+            release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(self._vtable[2])
+            release(self._ptr)
+            self._ptr = ctypes.c_void_p()
+            self._vtable = None
+        if self._should_uninit and self._ole32 is not None:
+            self._ole32.CoUninitialize()
+            self._should_uninit = False
+
+    def active_monitor_ids(self) -> list[str]:
+        get_count = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(wintypes.UINT))(self._vtable[6])
+        get_at = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(self._vtable[5])
+        get_rect = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(_RECT))(self._vtable[7])
+        count = wintypes.UINT()
+        if get_count(self._ptr, ctypes.byref(count)) < 0:
+            return []
+        monitors: list[str] = []
+        for index in range(count.value):
+            mid_ptr = ctypes.c_void_p()
+            if get_at(self._ptr, index, ctypes.byref(mid_ptr)) >= 0 and mid_ptr.value:
+                mid = ctypes.wstring_at(mid_ptr.value)
+                self._ole32.CoTaskMemFree(mid_ptr)
+                rect = _RECT()
+                if get_rect(self._ptr, mid, ctypes.byref(rect)) == 0:
+                    monitors.append(mid)
+        return monitors
+
+    def get_wallpapers(self) -> list[str]:
+        get_wp = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p))(self._vtable[4])
+        monitors = self.active_monitor_ids()
+        targets: list[str | None] = monitors if monitors else [None]
+        wallpapers: list[str] = []
+        for monitor_id in targets:
+            wp_ptr = ctypes.c_void_p()
+            hr = get_wp(self._ptr, monitor_id, ctypes.byref(wp_ptr))
+            if hr >= 0:
+                value = ctypes.wstring_at(wp_ptr.value) if wp_ptr.value else ""
+                if wp_ptr.value:
+                    self._ole32.CoTaskMemFree(wp_ptr)
+                wallpapers.append(value)
+        return wallpapers
+
+    def set_wallpaper(self, path: str) -> bool:
+        set_wp = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, wintypes.LPCWSTR)(self._vtable[3])
+        enable_fn = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.BOOL)(self._vtable[18])
+        set_pos = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int)(self._vtable[10])
+        expected_norm = _normalize_wallpaper_path(path)
+        if path:
+            enable_fn(self._ptr, True)
+            set_pos(self._ptr, _DWPOS_FILL)
+            hr = set_wp(self._ptr, None, path)
+            if hr < 0:
+                return False
+            monitors = self.active_monitor_ids()
+            for monitor_id in monitors:
+                set_wp(self._ptr, monitor_id, path)
+        else:
+            hr = set_wp(self._ptr, None, "")
+            if hr < 0:
+                enable_fn(self._ptr, False)
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            current = self.get_wallpapers()
+            if current and all(_normalize_wallpaper_path(item) == expected_norm for item in current):
+                return True
+            time.sleep(0.05)
+        current = self.get_wallpapers()
+        return bool(current) and all(_normalize_wallpaper_path(item) == expected_norm for item in current)
+
+    def get_background_color(self) -> str | None:
+        get_bg = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD))(self._vtable[9])
+        colorref = wintypes.DWORD()
+        if get_bg(self._ptr, ctypes.byref(colorref)) >= 0:
+            return _colorref_to_hex(colorref.value)
+        return None
+
+    def set_background_color(self, color: str) -> bool:
+        set_bg = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.DWORD)(self._vtable[8])
+        hr = set_bg(self._ptr, _hex_to_colorref(color))
+        return hr >= 0
+
+
 class WindowsDesktopBackend:
     def get_high_contrast(self) -> bool | None:
         if not hasattr(ctypes, "windll"):
@@ -199,7 +412,19 @@ class WindowsDesktopBackend:
             return None
         return bool(state.dwFlags & 0x00000001)
 
+    def get_wallpapers(self) -> list[str] | None:
+        try:
+            with _DesktopWallpaperCOM() as com:
+                if com is not None:
+                    return com.get_wallpapers()
+        except OSError:
+            return None
+        return None
+
     def get_wallpaper(self) -> str:
+        wallpapers = self.get_wallpapers()
+        if wallpapers:
+            return wallpapers[0]
         if winreg is None:
             raise OSError("Windows registry is only available on Windows")
         try:
@@ -211,8 +436,31 @@ class WindowsDesktopBackend:
     def set_wallpaper(self, path: str) -> bool:
         if not hasattr(ctypes, "windll"):
             raise OSError("System wallpaper API is only available on Windows")
-        result = ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3)
-        return bool(result)
+        try:
+            with _DesktopWallpaperCOM() as com:
+                if com is not None and com.set_wallpaper(path):
+                    return True
+        except OSError:
+            pass
+        return bool(ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3))
+
+    def get_background_color(self) -> str | None:
+        try:
+            with _DesktopWallpaperCOM() as com:
+                if com is not None:
+                    return com.get_background_color()
+        except OSError:
+            return None
+        return None
+
+    def set_background_color(self, color: str) -> bool:
+        try:
+            with _DesktopWallpaperCOM() as com:
+                if com is not None:
+                    return com.set_background_color(color)
+        except OSError:
+            return False
+        return False
 
     def refresh_theme(self) -> None:
         if not hasattr(ctypes, "windll"):
@@ -322,8 +570,20 @@ def generate_accent_palette(accent: str) -> bytes:
     return b"".join(bytes((*reversed(parse_hex_color(color)), 0)) for color in colors)
 
 
-def _theme_registry_values(plan: Plan) -> dict[str, int | bytes | str]:
-    palette = plan.palette_for(plan.mode)
+def effective_windows_mode(
+    plan_mode: str,
+    shell_mode: str | None = None,
+    app_mode: str | None = None,
+) -> str:
+    if shell_mode in {"light", "dark"}:
+        return shell_mode
+    if app_mode in {"light", "dark"}:
+        return app_mode
+    return plan_mode
+
+
+def _theme_registry_values(plan: Plan, mode: str | None = None) -> dict[str, int | bytes | str]:
+    palette = plan.palette_for(mode or plan.mode)
     shell_accent = _shell_accent(palette["accent"])
     inactive_accent = _shell_accent(palette["surface_subtle"])
     accent = windows_color_value(shell_accent)
@@ -344,8 +604,8 @@ def _theme_registry_values(plan: Plan) -> dict[str, int | bytes | str]:
     return values
 
 
-def _field_statuses(plan: Plan, status: str, shell_mode: str) -> dict[str, str]:
-    statuses = {name: status for name in _theme_registry_values(plan)}
+def _field_statuses(plan: Plan, status: str, shell_mode: str, mode: str | None = None) -> dict[str, str]:
+    statuses = {name: status for name in _theme_registry_values(plan, mode=mode)}
     statuses["wallpaper"] = status
     if shell_mode != "dark":
         statuses["StartTaskbarColorPrevalence"] = "unsupported"
@@ -363,15 +623,19 @@ def _field_metadata(
     status: str,
     shell_mode: str,
     generated_values: dict[str, Any] | None = None,
+    effective_mode: str | None = None,
 ) -> dict[str, Any]:
-    statuses = _field_statuses(plan, status, shell_mode)
-    return {
+    statuses = _field_statuses(plan, status, shell_mode, mode=effective_mode)
+    metadata = {
         "field_capabilities": statuses,
         "field_inventory": inventory_report("windows", statuses, generated_values),
         "field_groups": inventory_groups("windows", statuses, generated_values),
         "shell_mode": shell_mode,
         "rendering_verification": "untested",
     }
+    if effective_mode is not None:
+        metadata["effective_mode"] = effective_mode
+    return metadata
 
 
 class WindowsAdapter:
@@ -400,6 +664,33 @@ class WindowsAdapter:
         value = self.registry.get_value(name)
         return "light" if value == 1 else "dark" if value == 0 else "unknown"
 
+    def _effective_mode(self, plan: Plan) -> str:
+        shell_mode = self._mode("SystemUsesLightTheme")
+        app_mode = self._mode("AppsUseLightTheme")
+        if shell_mode == "unknown" and app_mode == "unknown":
+            instance = plan.target_instances.get("windows", {})
+            shell_mode = str(instance.get("shell_mode", "unknown"))
+            app_mode = str(instance.get("app_mode", "unknown"))
+        return effective_windows_mode(plan.mode, shell_mode, app_mode)
+
+    def _wallpaper_matches(self, expected_path: str, expected_background_color: str | None = None) -> bool:
+        expected_norm = _normalize_wallpaper_path(expected_path)
+        get_wallpapers = getattr(self.desktop, "get_wallpapers", None)
+        wallpapers = get_wallpapers() if callable(get_wallpapers) else None
+        if wallpapers is not None:
+            if not wallpapers:
+                return False
+            if not all(_normalize_wallpaper_path(item) == expected_norm for item in wallpapers):
+                return False
+        elif _normalize_wallpaper_path(self.desktop.get_wallpaper()) != expected_norm:
+            return False
+        if expected_background_color is not None:
+            get_bg = getattr(self.desktop, "get_background_color", None)
+            actual_bg = get_bg() if callable(get_bg) else None
+            if actual_bg is not None and actual_bg.upper() != expected_background_color.upper():
+                return False
+        return True
+
     def detect(self) -> AdapterResult:
         detected = detect_windows_version(self.registry)
         if detected is None:
@@ -407,10 +698,13 @@ class WindowsAdapter:
         family, build = detected
         self._version = f"{family} build {build}"
         high_contrast = self.desktop.get_high_contrast()
+        app_mode = self._mode("AppsUseLightTheme")
+        shell_mode = self._mode("SystemUsesLightTheme")
         metadata = {
-            "system_mode": self._mode("AppsUseLightTheme"),
-            "app_mode": self._mode("AppsUseLightTheme"),
-            "shell_mode": self._mode("SystemUsesLightTheme"),
+            "system_mode": app_mode,
+            "app_mode": app_mode,
+            "shell_mode": shell_mode,
+            "effective_mode": effective_windows_mode("dark", shell_mode, app_mode),
             "selected_mode_is_independent": True,
             "automatic_accent_enabled": self._auto_colorization_active(),
             "high_contrast": high_contrast,
@@ -438,9 +732,14 @@ class WindowsAdapter:
             backup_dir.mkdir(parents=True, exist_ok=True)
             old_path = self.desktop.get_wallpaper()
             registry_values = self.registry.snapshot_values(THEME_VALUES)
+            get_bg = getattr(self.desktop, "get_background_color", None)
+            background_color = get_bg() if callable(get_bg) else None
+            if background_color is None:
+                background_color = _rgb_string_to_hex(registry_values.get("Background"))
             metadata = {
                 "registry": {name: _json_safe_registry_value(value) for name, value in registry_values.items()},
                 "wallpaper": old_path,
+                "background_color": background_color,
             }
             atomic_write_text(backup_dir / "windows.json", json.dumps(metadata, sort_keys=True))
             if old_path and Path(old_path).is_file():
@@ -455,12 +754,18 @@ class WindowsAdapter:
         try:
             if self.desktop.get_high_contrast() is not False:
                 return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration preserved")
+            effective_mode = self._effective_mode(plan)
+            palette = plan.palette_for(effective_mode)
             self.config.wallpaper_dir.mkdir(parents=True, exist_ok=True)
             wallpaper_path = (self.config.wallpaper_dir / f"{plan.id}.png").resolve()
-            self._wallpaper_path = generate_wallpaper(plan.palette_for(plan.mode), wallpaper_path)
+            self._wallpaper_path = generate_wallpaper(palette, wallpaper_path)
             if not self.desktop.set_wallpaper(str(self._wallpaper_path)):
                 return AdapterResult(self.target, "failed", True, False, "Windows wallpaper API rejected the generated wallpaper")
-            for name, value in _theme_registry_values(plan).items():
+            set_bg = getattr(self.desktop, "set_background_color", None)
+            if callable(set_bg):
+                set_bg(palette["surface"])
+            registry_values = _theme_registry_values(plan, mode=effective_mode)
+            for name, value in registry_values.items():
                 self.registry.set_value(name, value)
             self.desktop.refresh_theme()
             auto_colorization = self._auto_colorization_active()
@@ -468,7 +773,8 @@ class WindowsAdapter:
                 plan,
                 "applied",
                 self._mode("SystemUsesLightTheme"),
-                {**_theme_registry_values(plan), "wallpaper": str(self._wallpaper_path)},
+                {**registry_values, "wallpaper": str(self._wallpaper_path)},
+                effective_mode=effective_mode,
             )
             if auto_colorization or self._mode("SystemUsesLightTheme") != "dark":
                 message = "theme colors and generated wallpaper applied"
@@ -496,10 +802,16 @@ class WindowsAdapter:
     def verify(self, plan: Plan) -> AdapterResult:
         if self.desktop.get_high_contrast() is not False:
             return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration rendering cannot be accepted")
+        effective_mode = self._effective_mode(plan)
+        palette = plan.palette_for(effective_mode)
         expected_path = self._wallpaper_path or (self.config.wallpaper_dir / f"{plan.id}.png").resolve()
-        expected_registry = _theme_registry_values(plan)
+        expected_registry = _theme_registry_values(plan, mode=effective_mode)
         colors_ok = all(self.registry.get_value(name) == value for name, value in expected_registry.items())
-        wallpaper_ok = expected_path is not None and Path(expected_path).is_file() and self.desktop.get_wallpaper() == str(expected_path)
+        wallpaper_ok = (
+            expected_path is not None
+            and Path(expected_path).is_file()
+            and self._wallpaper_matches(str(expected_path), expected_background_color=palette["surface"])
+        )
         verified = colors_ok and wallpaper_ok
         auto_colorization = self._auto_colorization_active()
         metadata = _field_metadata(
@@ -507,6 +819,7 @@ class WindowsAdapter:
             "verified" if verified else "failed",
             self._mode("SystemUsesLightTheme"),
             {**expected_registry, "wallpaper": str(expected_path)},
+            effective_mode=effective_mode,
         )
         if verified and (auto_colorization or self._mode("SystemUsesLightTheme") != "dark"):
             message = "Windows theme and wallpaper verified"
@@ -539,6 +852,7 @@ class WindowsAdapter:
                 self.registry.set_value("AutoColorization", 0)
             self.registry.restore_values(registry_values)
             old_path = str(metadata.get("wallpaper", ""))
+            old_bg_color = metadata.get("background_color") or _rgb_string_to_hex(registry_values.get("Background"))
             original_backup = backup_dir / "original-wallpaper"
             if old_path and original_backup.is_file():
                 import shutil
@@ -547,6 +861,10 @@ class WindowsAdapter:
             try:
                 if not self.desktop.set_wallpaper(old_path):
                     return AdapterResult(self.target, "failed", True, False, "Windows wallpaper restore was rejected")
+                if isinstance(old_bg_color, str):
+                    set_bg = getattr(self.desktop, "set_background_color", None)
+                    if callable(set_bg):
+                        set_bg(old_bg_color)
                 self.registry.restore_values(registry_values)
             finally:
                 if auto_colorization is None:
@@ -559,7 +877,7 @@ class WindowsAdapter:
                 if name != "AutoColorization"
             )
             restored = restored and self.registry.get_value("AutoColorization") == auto_colorization
-            restored = restored and self.desktop.get_wallpaper() == old_path
+            restored = restored and self._wallpaper_matches(old_path, expected_background_color=old_bg_color if isinstance(old_bg_color, str) else None)
             return AdapterResult(self.target, "ok" if restored else "failed", True, restored, "Windows theme and wallpaper restored" if restored else "Windows restore verification failed", version=self._version)
         except (OSError, KeyError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Windows rollback failed: {error}")

@@ -377,21 +377,28 @@ def _contrast_safe_accent(
     allow_low_chroma: bool = False,
 ) -> str:
     seed_lightness, seed_chroma, hue = _oklch_components(seed_color)
-    target_chroma = min(0.16, max(0.035, seed_chroma))
-    factors = (1.0, 0.8, 0.6, 0.4, 0.25) if allow_low_chroma else (1.0, 0.8, 0.6)
-    candidates = [
-        _oklch_color(hue, candidate_lightness / 100, min(0.16, max(0.035, seed_chroma * factor)))
-        for candidate_lightness in range(8, 93)
-        for factor in factors
-    ]
-    candidates = [candidate for candidate in candidates if candidate not in {"#000000", "#FFFFFF"}]
+    target_chroma = min(0.17, max(0.035, seed_chroma))
+    factors = (1.0, 0.88, 0.75, 0.6, 0.4, 0.25) if allow_low_chroma else (1.0, 0.85, 0.7, 0.55)
+    candidates: list[str] = []
+    for candidate_lightness in range(9, 92):
+        for factor in factors:
+            candidate = _oklch_color(
+                hue,
+                candidate_lightness / 100,
+                min(0.17, max(0.035, seed_chroma * factor)),
+            )
+            if candidate in {"#000000", "#FFFFFF"}:
+                continue
+            actual_lightness, _, _ = _oklch_components(candidate)
+            if MODE_ACCENT_MIN_LIGHTNESS <= actual_lightness <= MODE_ACCENT_MAX_LIGHTNESS:
+                candidates.append(candidate)
+    candidates = list(dict.fromkeys(candidates))
     valid = [candidate for candidate in candidates if contrast_ratio(candidate, background) >= 3]
 
-    def theme_distance(candidate: str) -> tuple[float, float, float]:
+    def theme_distance(candidate: str) -> tuple[float, float]:
         lightness, chroma, _ = _oklch_components(candidate)
         return (
-            abs(lightness - seed_lightness),
-            abs(chroma - target_chroma),
+            abs(chroma - target_chroma) * 3.0 + abs(lightness - seed_lightness) * 0.8,
             -contrast_ratio(candidate, background),
         )
 
@@ -448,25 +455,46 @@ def _semantic_text_color(
     return _readable_foreground(backgrounds, minimum_ratio, hue=hue)
 
 
+def _muted_foreground(surface: str, foreground: str, hue: float, mode: str) -> str:
+    target_contrast = 5.2
+    chroma = 0.015
+    lightness_range = range(32, 65) if mode == "light" else range(58, 86)
+    candidates: list[tuple[str, float, float]] = []
+    for step in lightness_range:
+        candidate = _oklch_color(hue, step / 100, chroma)
+        if candidate in {"#000000", "#FFFFFF"}:
+            continue
+        ratio = contrast_ratio(candidate, surface)
+        distance = _oklab_delta_e(candidate, foreground)
+        if ratio >= 4.5:
+            candidates.append((candidate, ratio, distance))
+    if candidates:
+        distinct = [item for item in candidates if item[2] >= 0.12]
+        pool = distinct or candidates
+        return min(pool, key=lambda item: (abs(item[1] - target_contrast), -item[2]))[0]
+    return _readable_foreground((surface,), 4.5, hue=0.52)
+
+
 def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     seed = _to_hex(parse_hex_color(seed_color))
     _lightness, seed_chroma, hue = _oklch_components(seed)
-    tonal_chroma = min(0.038, max(0.014, seed_chroma * 0.20))
     if mode == "dark":
-        background = _oklch_color(hue, 0.21, tonal_chroma)
-        surface = _oklch_color(hue, 0.31, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.23, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.39, tonal_chroma)
+        tonal_chroma = min(0.034, max(0.012, seed_chroma * 0.18))
+        background = _oklch_color(hue, 0.20, tonal_chroma)
+        surface = _oklch_color(hue, 0.30, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.22, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.38, tonal_chroma)
     else:
-        background = _oklch_color(hue, 0.80, tonal_chroma)
-        surface = _oklch_color(hue, 0.885, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.81, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.955, tonal_chroma)
+        tonal_chroma = min(0.024, max(0.010, seed_chroma * 0.14))
+        background = _oklch_color(hue, 0.825, tonal_chroma)
+        surface = _oklch_color(hue, 0.910, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.835, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.976, tonal_chroma)
     background_foreground = _readable_foreground((background,), 7)
     foreground = _readable_foreground(
         (surface,), 7, minimum_lightness=2 if mode == "light" else 4
     )
-    muted_foreground = _readable_foreground((surface,), 4.5, hue=0.52)
+    muted_foreground = _muted_foreground(surface, foreground, hue, mode)
     accent = _contrast_safe_accent(seed, surface, preserve_identity=True, allow_low_chroma=True)
     accent_lightness, accent_chroma, accent_hue = _oklch_components(accent)
     selection_background = _oklch_color(accent_hue, accent_lightness, accent_chroma * 0.72)
@@ -503,6 +531,9 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
         "warning_text": _semantic_text_color((surface,), 4.5, 0.19),
         "success": success,
         "success_text": _semantic_text_color((surface,), 4.5, 0.42),
+        "info_text": _semantic_text_color((surface,), 4.5, 0.70),
+        "purple_text": _semantic_text_color((surface,), 4.5, 0.83),
+        "cyan_text": _semantic_text_color((surface,), 4.5, 0.56),
     }
     errors = validate_palette(palette, mode=mode)
     if errors:
@@ -594,19 +625,30 @@ def validate_palette(palette: Mapping[str, str], *, mode: str | None = None) -> 
             except ValueError as error:
                 invalid_keys.add(key)
                 errors.append(f"{key}: {error}")
-    if "prediction_foreground" in palette:
-        try:
-            parse_hex_color(palette["prediction_foreground"])
-        except ValueError as error:
-            invalid_keys.add("prediction_foreground")
-            errors.append(f"prediction_foreground: {error}")
-    for foreground, background, minimum_ratio in _CONTRAST_PAIRS:
+    for optional_key in ("prediction_foreground", "info_text", "purple_text", "cyan_text"):
+        if optional_key in palette:
+            try:
+                parse_hex_color(palette[optional_key])
+            except ValueError as error:
+                invalid_keys.add(optional_key)
+                errors.append(f"{optional_key}: {error}")
+    for foreground, background, minimum_ratio in (
+        *_CONTRAST_PAIRS,
+        ("info_text", "surface", 4.5),
+        ("purple_text", "surface", 4.5),
+        ("cyan_text", "surface", 4.5),
+    ):
         if mode in {"light", "dark"} and foreground == "foreground":
             minimum_ratio = 7
         if foreground in palette and background in palette and not ({foreground, background} & invalid_keys):
             ratio = contrast_ratio(palette[foreground], palette[background])
             if ratio < minimum_ratio:
                 errors.append(f"contrast: {foreground}/{background} is {ratio:.2f}:1, required >= {minimum_ratio:g}:1")
+    if mode in {"light", "dark"} and "muted_foreground" in palette and "foreground" in palette:
+        if not ({"muted_foreground", "foreground"} & invalid_keys):
+            muted_distance = _oklab_delta_e(palette["muted_foreground"], palette["foreground"])
+            if muted_distance < 0.08:
+                errors.append(f"hierarchy: muted_foreground/foreground deltaE is {muted_distance:.3f}, required >= 0.08")
     if "surface_subtle" in palette:
         tonal_roles = ("background", "surface", "surface_subtle", "surface_raised")
         interactive_roles = ("accent", "border", "selection_background")

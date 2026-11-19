@@ -50,12 +50,12 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 - Plan ID、Transaction ID 和 target 必须是安全路径组件；未知 target 可安全 skipped，但不得创建越界路径。
 - Plan、事务和目标配置 JSON 使用同目录临时文件加原子替换，避免中断造成截断文件。
 - 事务快照默认保留最近 5 个已完成事务；只清理工具生成的数据。
-- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface、Antigravity `customThemeSeeds*` / `hubSurfaceBackgroundColor` 与 Windows 壁纸继续使用派生 Tonal surface。Windows Shell accent 保护固定白色图标 `4.5:1`，同步 `AccentColorInactive` 与 `Control Panel\Colors\Background`；确认 Apply 关闭透明效果，保持应用/Shell 模式、AutoColorization、高对比度和字体。高对比度开启或 API 未知时安全跳过 Windows。
+- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface、Antigravity `customThemeSeeds*` / `hubSurfaceBackgroundColor`（跟随当前 Windows 应用模式 `AppsUseLightTheme`）与 Windows 壁纸（跟随当前 Shell 模式 `SystemUsesLightTheme`，经 `IDesktopWallpaper` 逐屏设置与校验）继续使用派生 Tonal surface。Windows Shell accent 保护固定白色图标 `4.5:1`，同步 `AccentColorInactive` 与 `Control Panel\Colors\Background`；确认 Apply 关闭透明效果，保持应用/Shell 模式、AutoColorization、高对比度和字体，不引入后台常驻服务。高对比度开启或 API 未知时安全跳过 Windows。
 - Cursor 暂不属于用户可见支持目标；显式输入 cursor 必须安全 skipped，不得访问或修改 Cursor 文件。
 
 ## 当前实现边界
 
-- Windows Terminal 覆盖 defaults、所有 Profile 及已有 unfocusedAppearance；按版本关闭 Acrylic/Mica、设实心 opacity、清空背景图片、移除固定 tabColor，并保留字体和非受管偏好。同时注册 `One Tone Light` 与 `One Tone Dark` 两套 Scheme 和窗口主题，默认绑定 `One Tone Dark`（`applicationTheme = dark`）。平台能力另行校验，未知项报告 partial。Scheme 不写 selectionForeground。
+- Windows Terminal 覆盖 defaults、所有 Profile 及已有 unfocusedAppearance；按版本关闭 Acrylic/Mica、设实心 opacity、清空背景图片、移除固定 tabColor，并保留字体和非受管偏好。同时注册 `One Tone Light`（`applicationTheme = light`）与 `One Tone Dark`（`applicationTheme = dark`）两套 Scheme 和窗口主题，默认绑定 `One Tone Dark`。平台能力另行校验，未知项报告 partial。Scheme 不写 selectionForeground。
 - Windows Terminal 正文在两种 Mode 的受管背景均要求 `7:1`；原生 `adjustIndistinguishableColors = always` 按 Preview 发现的版本能力应用。Shell/PSReadLine 默认只选 PowerShell 7 `pwsh`，不回退 Windows PowerShell；配置 Verify 与真实渲染验收分别报告。
 - VS Code / TRAE / Antigravity IDE 以固定公开清单与实际 Workbench 注册字段的交集为范围；支持 1.x Workbench（`<1.140` 映射 `1.107.1`，`>=1.140` 映射 `1.140.0`），未知版本安全跳过。优先使用 C 盘标准配置目录（`%APPDATA%\<App>\User\settings.json` 与 `~/.<app>/extensions`），不改动 Scoop 便携目录结构，同时对已存在的 Scoop `data/` 便携目录执行镜像同步。透明装饰叠层与实心窗口策略分开，文字检查真实合成背景；私有 AI 能力 unsupported。
 - Antigravity 桌面端（`antigravity`）保持独立 Adapter，管理 `~/.gemini/config/config.json` 与 `%APPDATA%\Antigravity\app_storage.json`。

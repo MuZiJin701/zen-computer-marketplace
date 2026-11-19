@@ -222,3 +222,17 @@ def test_extreme_seed_colors_keep_tonal_surfaces_and_readable_interactions():
             ))
             assert contrast_ratio(palette["accent"], palette["surface"]) >= 3
             assert validate_palette(palette) == []
+
+
+def test_muted_foreground_light_accent_and_ansi_roles_are_distinct():
+    from one_tone.palette import _oklab_delta_e
+
+    for mode in ("light", "dark"):
+        palette = generate_palette("#22C55E", mode)
+        assert _oklab_delta_e(palette["muted_foreground"], palette["foreground"]) >= 0.12
+        assert contrast_ratio(palette["muted_foreground"], palette["surface"]) >= 4.5
+        assert len({palette["error_text"], palette["warning_text"], palette["success_text"], palette["info_text"], palette["purple_text"], palette["cyan_text"]}) == 6
+        for role in ("info_text", "purple_text", "cyan_text"):
+            assert contrast_ratio(palette[role], palette["surface"]) >= 4.5
+    light = generate_palette("#22C55E", "light")
+    assert _oklch_components(light["accent"])[1] >= 0.10

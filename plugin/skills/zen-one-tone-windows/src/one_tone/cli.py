@@ -24,7 +24,7 @@ from .adapters.antigravity import _generated_values as _antigravity_generated_va
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
 from .adapters.chrome import _manifest
 from .adapters.codex import _theme_updates
-from .adapters.windows import _theme_registry_values
+from .adapters.windows import _theme_registry_values, effective_windows_mode
 from .adapters.vscode_family import build_theme_json
 from .field_mappings import TERMINAL_APPEARANCE_FIELDS, TERMINAL_FIELD_MAPPINGS
 from .inventory import inventory_groups
@@ -281,7 +281,10 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
         elif target == "chatgpt-app":
             registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None)
         elif target == "antigravity":
-            registry[target] = AntigravityAdapter(target_instance=antigravity_instance)
+            registry[target] = AntigravityAdapter(
+                target_instance=antigravity_instance,
+                detect_system_mode=target_instances is None,
+            )
         elif target == "chrome":
             registry[target] = ChromeAdapter(state_dir / "chrome-themes", chrome_preferences if chrome_preferences.is_file() else None)
         else:
@@ -306,9 +309,11 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
         elif target == "terminal":
             generated = {mapping.field: palette[mapping.palette_key] for mapping in TERMINAL_FIELD_MAPPINGS}
             generated.update({name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items() if value is not None})
-            generated["window.applicationTheme"] = "dark"
+            generated["window.applicationTheme"] = mode
         elif target == "windows":
-            generated = {**_theme_registry_values(plan), "wallpaper": {"color": plan.palette_for(plan.mode)["surface"]}}
+            win_instance = plan.target_instances.get("windows", {})
+            win_mode = effective_windows_mode(plan.mode, win_instance.get("shell_mode"), win_instance.get("app_mode"))
+            generated = {**_theme_registry_values(plan, mode=win_mode), "wallpaper": {"color": plan.palette_for(win_mode)["surface"]}}
         else:
             generated = {}
         for name, value in generated.items():

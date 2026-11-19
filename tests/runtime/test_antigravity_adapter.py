@@ -68,3 +68,24 @@ def test_antigravity_adapter_applies_verifies_and_restores_preserving_fields(tmp
 def test_antigravity_adapter_skips_when_both_files_missing(tmp_path):
     adapter = AntigravityAdapter(config_path=tmp_path / "missing-config.json", storage_path=tmp_path / "missing-storage.json")
     assert adapter.detect().status == "skipped"
+
+
+def test_antigravity_hub_surface_follows_detected_windows_app_mode(tmp_path):
+    config_path = tmp_path / "config.json"
+    storage_path = tmp_path / "app_storage.json"
+    config_path.write_text(json.dumps({"userSettings": {}}), encoding="utf-8")
+    storage_path.write_text(json.dumps({"hubSurfaceBackgroundColor": "#000000"}), encoding="utf-8")
+
+    adapter = AntigravityAdapter(config_path=config_path, storage_path=storage_path, app_mode="light")
+    plan = create_plan(
+        "#22C55E",
+        ["antigravity"],
+        plan_id="plan-antigravity-app-mode-001",
+        mode="dark",
+        target_instances={"antigravity": adapter.target_instance()},
+    )
+    assert plan.target_instances["antigravity"]["app_mode"] == "light"
+    assert adapter.apply(plan).status == "ok"
+    updated_storage = json.loads(storage_path.read_text(encoding="utf-8"))
+    assert updated_storage["hubSurfaceBackgroundColor"] == plan.palette_for("light")["surface"]
+    assert adapter.verify(plan).verified is True

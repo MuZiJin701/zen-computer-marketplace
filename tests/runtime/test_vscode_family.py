@@ -259,8 +259,10 @@ def test_editor_theme_uses_contrast_safe_text_for_accented_tokens():
     assert theme["colors"]["textLink.foreground"] == palette["accent_text"]
     assert theme["colors"]["errorForeground"] == palette["error_text"]
     assert theme["semanticHighlighting"] is True
-    assert theme["semanticTokenColors"]["function"] == palette["success_text"]
-    assert theme["semanticTokenColors"]["type"] == palette["accent_text"]
+    assert theme["semanticTokenColors"]["function"] == palette["info_text"]
+    assert theme["semanticTokenColors"]["type"] == palette["cyan_text"]
+    assert theme["semanticTokenColors"]["string"] == palette["success_text"]
+    assert theme["semanticTokenColors"]["keyword"] == palette["accent_text"]
     assert theme["tokenColors"][1]["settings"]["foreground"] == palette["success_text"]
     assert theme["tokenColors"][2]["settings"]["foreground"] == palette["accent_text"]
     assert theme["tokenColors"][3]["settings"]["foreground"] == palette["error_text"]

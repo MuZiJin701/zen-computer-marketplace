@@ -137,6 +137,18 @@ Windows 快速设置中显示固定白色系统图标的活动卡片；它和 St
 
 _Avoid_: 只校验 AccentPalette 注册表回读
 
+**Desktop wallpaper state**
+
+Windows Explorer 通过现代 `IDesktopWallpaper` 接口实际生效的多屏壁纸路径与底色状态，而非仅指旧版注册表 `Control Panel\Desktop\WallPaper` 的回读值。
+
+_Avoid_: 仅以注册表壁纸路径代替真实桌面状态
+
+**Effective Windows mode**
+
+在 Preview、Apply 与 Verify 阶段，单模式目标根据 Windows 当前深浅设置解析出的实际 Palette Mode：Windows 外壳（壁纸、底色与强调色）跟随 `SystemUsesLightTheme`（未知时回退 `AppsUseLightTheme`，再回退 `plan.mode`），Antigravity Hub 底色（`hubSurfaceBackgroundColor`）跟随 `AppsUseLightTheme`（未知时回退 `plan.mode`）。工具不修改系统深浅开关，也不运行后台常驻监听。
+
+_Avoid_: 强制切换系统深浅模式、后台主题监听服务
+
 ### Target language
 
 **Marketplace**  

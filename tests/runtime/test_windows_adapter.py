@@ -355,3 +355,48 @@ def test_windows_apply_persists_an_absolute_wallpaper_path(tmp_path, monkeypatch
 
     assert adapter.apply(plan).status == "ok"
     assert Path(desktop.wallpaper).is_absolute()
+
+
+def test_windows_effective_mode_follows_shell_mode_then_app_mode(tmp_path):
+    light_registry = InMemoryRegistryBackend({"CurrentBuild": "26300", "AppsUseLightTheme": 1, "SystemUsesLightTheme": 1})
+    light_desktop = InMemoryDesktopBackend(monitor_count=2)
+    adapter = WindowsAdapter(WindowsConfig(tmp_path / "light"), light_registry, light_desktop)
+    plan = create_plan("#22C55E", ["windows"], plan_id="plan-windows-effective-light", mode="dark")
+
+    assert adapter.detect().metadata["effective_mode"] == "light"
+    result = adapter.apply(plan)
+    assert result.metadata["effective_mode"] == "light"
+    expected_surface = plan.palette_for("light")["surface"]
+    expected_rgb = " ".join(str(channel) for channel in bytes.fromhex(expected_surface[1:]))
+    assert light_registry.values["Background"] == expected_rgb
+    assert light_desktop.background_color == expected_surface
+    assert len(light_desktop.monitor_wallpapers) == 2
+    assert all(Path(path).is_file() for path in light_desktop.monitor_wallpapers)
+    assert adapter.verify(plan).verified is True
+
+    # Simulate stale Explorer monitor state (black/empty wallpaper) -> verify must catch it
+    light_desktop.monitor_wallpapers[1] = ""
+    assert adapter.verify(plan).verified is False
+    light_desktop.monitor_wallpapers[1] = light_desktop.monitor_wallpapers[0]
+    light_desktop.background_color = "#000000"
+    assert adapter.verify(plan).verified is False
+
+
+def test_windows_rollback_restores_solid_black_empty_wallpaper_state(tmp_path):
+    registry = InMemoryRegistryBackend({
+        "CurrentBuild": "26300",
+        "AppsUseLightTheme": 1,
+        "SystemUsesLightTheme": 1,
+        "Background": "0 0 0",
+    })
+    desktop = InMemoryDesktopBackend(wallpaper="", background_color="#000000", monitor_count=2)
+    adapter = WindowsAdapter(WindowsConfig(tmp_path / "wp"), registry, desktop)
+    plan = create_plan("#22C55E", ["windows"], plan_id="plan-windows-solid-rollback")
+
+    assert adapter.snapshot(tmp_path / "backup").status == "ok"
+    assert adapter.apply(plan).changed is True
+    assert desktop.background_color == plan.palette_for("light")["surface"]
+    assert adapter.rollback(tmp_path / "backup").verified is True
+    assert desktop.monitor_wallpapers == ["", ""]
+    assert desktop.background_color == "#000000"
+    assert registry.values["Background"] == "0 0 0"

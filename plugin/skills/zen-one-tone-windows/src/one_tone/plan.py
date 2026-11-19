@@ -14,8 +14,10 @@ from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 APPEARANCE_POLICY = {
-    "revision": "2026-10-05.v4",
+    "revision": "2026-11-19.v5",
     "windows.EnableTransparency": 0,
+    "windows.wallpaper_mode_matching": "shell_mode_with_idesktopwallpaper",
+    "antigravity.hub_mode_matching": "app_mode",
     "terminal": "solid profiles and unfocused appearances; paired native themes; remove fixed tabColor and background images",
     "chatgpt-app.appearanceTheme": "system",
     "fonts": "preserve; repair missing ChatGPT fonts tables only",
