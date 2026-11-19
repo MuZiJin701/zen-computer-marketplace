@@ -49,19 +49,27 @@ def _is_v1_payload(payload: object) -> bool:
     if not isinstance(payload, dict):
         return False
     desktop = payload.get("desktop")
-    if not isinstance(desktop, dict) or desktop.get("appearanceTheme") not in {"dark", "light", "system"}:
+    if not isinstance(desktop, dict):
+        return False
+    appearance_theme = desktop.get("appearanceTheme")
+    has_theme_table = any(name in desktop for name in ("appearanceLightChromeTheme", "appearanceDarkChromeTheme"))
+    if appearance_theme is None and not has_theme_table:
+        return False
+    if appearance_theme is not None and appearance_theme not in {"dark", "light", "system"}:
         return False
     for table_name in ("appearanceLightChromeTheme", "appearanceDarkChromeTheme"):
+        if table_name not in desktop:
+            continue
         theme = desktop.get(table_name)
         if not isinstance(theme, dict):
             return False
-        if any(not isinstance(theme.get(key), str) for key in _THEME_FIELDS):
+        if any(key in theme and not isinstance(theme.get(key), str) for key in _THEME_FIELDS):
             return False
         if "accentSource" in theme and not isinstance(theme.get("accentSource"), str):
             return False
-        if not isinstance(theme.get("contrast"), (int, float)) or isinstance(theme.get("contrast"), bool):
+        if "contrast" in theme and (not isinstance(theme.get("contrast"), (int, float)) or isinstance(theme.get("contrast"), bool)):
             return False
-        if not isinstance(theme.get("opaqueWindows"), bool):
+        if "opaqueWindows" in theme and not isinstance(theme.get("opaqueWindows"), bool):
             return False
         for optional_table in ("fonts", "semanticColors"):
             value = theme.get(optional_table)
@@ -130,7 +138,8 @@ def _missing_font_tables(payload: dict[str, Any]) -> tuple[str, ...]:
     return tuple(
         table_name
         for table_name in _THEME_TABLES
-        if "fonts" not in desktop[table_name.split(".", 1)[1]]
+        if not isinstance(desktop.get(table_name.split(".", 1)[1]), dict)
+        or "fonts" not in desktop[table_name.split(".", 1)[1]]
     )
 
 
@@ -156,6 +165,9 @@ def _replace_verified_values(
             output.append(line)
             continue
         assignment = assignment_pattern.match(line)
+        if assignment and section in _THEME_TABLES and assignment.group(2) == "semanticColors":
+            # Replace inline semanticColors = { ... } by omitting it here so the managed table block is emitted cleanly.
+            continue
         replacement = updates.get(section, {}).get(assignment.group(2)) if assignment else None
         if replacement is None:
             output.append(line)
@@ -184,7 +196,9 @@ def _matches_plan(payload: dict[str, Any], plan: Plan) -> bool:
         return False
     updates = _theme_updates(plan.palettes)
     for full_table_name, mode in zip(_THEME_TABLES, ("light", "dark")):
-        theme = desktop[full_table_name.split(".", 1)[1]]
+        theme = desktop.get(full_table_name.split(".", 1)[1])
+        if not isinstance(theme, dict):
+            return False
         expected = updates[full_table_name]
         if any(theme.get(key) != value for key, value in expected.items()):
             return False

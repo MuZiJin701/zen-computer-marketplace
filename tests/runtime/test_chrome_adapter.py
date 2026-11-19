@@ -104,6 +104,12 @@ def test_chrome_mode_artifacts_preserve_plan_palette_roles(tmp_path):
     )
     assert light_manifest["theme"]["colors"]["frame"] == list(parse_hex_color(plan.palette_for("light")["surface"]))
     assert dark_manifest["theme"]["colors"]["frame"] == list(parse_hex_color(plan.palette_for("dark")["surface"]))
+    assert light_manifest["name"].endswith("Light")
+    assert dark_manifest["name"].endswith("Dark")
+    assert light_manifest["name"] != dark_manifest["name"]
+    assert light_manifest["theme"]["tints"]["frame"][2] == 0.5
+    assert dark_manifest["theme"]["tints"]["frame"][2] == 0.5
+    assert light_manifest["theme"]["tints"]["buttons"][2] < 0.5 < dark_manifest["theme"]["tints"]["buttons"][2]
 
 
 def test_chrome_rollback_removes_zip_and_unpacked_artifacts(tmp_path):

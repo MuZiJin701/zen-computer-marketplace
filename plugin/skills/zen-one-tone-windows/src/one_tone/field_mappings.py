@@ -86,7 +86,8 @@ TERMINAL_FIELD_MAPPINGS = (
     *_fields("blue brightBlue", "info_text", region="terminal"),
     *_fields("purple brightPurple", "purple_text", region="terminal"),
     *_fields("cyan brightCyan", "cyan_text", region="terminal"),
-    *_fields("window.frame tab.background", "accent", region="terminal"),
+    *_fields("window.frame", "accent", region="terminal"),
+    *_fields("tab.background", "surface", region="terminal tabs"),
     *_fields("profile.colorScheme window.applicationTheme", "surface", region="terminal"),
     *_fields("profile.adjustIndistinguishableColors", "foreground", region="terminal", text_class="none"),
     *_fields("InlinePrediction ListPrediction", "prediction_foreground", region="terminal"),
@@ -98,12 +99,12 @@ TERMINAL_FIELD_MAPPINGS = (
 
 
 TERMINAL_APPEARANCE_FIELDS = {
-    "profile.colorScheme": ("One Tone Dark", (1, 0)),
+    "profile.colorScheme": ({"light": "One Tone Light", "dark": "One Tone Dark"}, (1, 16)),
     "profile.tabColor": ("remove", (1, 0)),
     "profile.useAcrylic": (False, (1, 0)),
     "profile.opacity": (100, (1, 12)),
     "profile.backgroundImage": ("", (1, 0)),
-    "theme": ("One Tone Dark", (1, 17)),
+    "theme": ({"light": "One Tone Light", "dark": "One Tone Dark"}, (1, 17)),
     "window.useMica": (False, (1, 17)),
     "window.frame": (None, (1, 22)),
     "window.unfocusedFrame": (None, (1, 22)),

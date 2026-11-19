@@ -10,7 +10,7 @@ from typing import Any, Callable, Mapping
 from ..editor_instance import EditorSpec
 from ..field_mappings import vscode_capabilities, vscode_theme_colors
 from ..plan import Plan
-from ..storage import atomic_write_text
+from ..storage import atomic_write_text, loads_jsonc
 from .base import AdapterResult, field_capabilities
 
 
@@ -51,14 +51,26 @@ def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None, *, ba
             "string": palette["success_text"],
         },
         "tokenColors": [
-            {"scope": ["comment"], "settings": {"foreground": palette["muted_foreground"]}},
+            {"scope": ["comment", "punctuation.definition.comment"], "settings": {"foreground": palette["muted_foreground"], "fontStyle": "italic"}},
             {"scope": ["string"], "settings": {"foreground": palette["success_text"]}},
-            {"scope": ["keyword"], "settings": {"foreground": palette["accent_text"]}},
+            {"scope": ["keyword", "storage.modifier", "keyword.operator"], "settings": {"foreground": palette["accent_text"]}},
             {"scope": ["invalid"], "settings": {"foreground": palette["error_text"]}},
             {"scope": ["entity.name.function", "support.function"], "settings": {"foreground": info_text}},
-            {"scope": ["entity.name.type", "support.type", "storage.type"], "settings": {"foreground": cyan_text}},
+            {"scope": ["entity.name.type", "support.type", "storage.type", "entity.name.class"], "settings": {"foreground": cyan_text}},
             {"scope": ["variable", "variable.parameter"], "settings": {"foreground": palette["foreground"]}},
-            {"scope": ["constant.numeric", "constant.language"], "settings": {"foreground": palette["warning_text"]}},
+            {"scope": ["constant.numeric", "constant.language", "keyword.other.unit"], "settings": {"foreground": palette["warning_text"]}},
+            {"scope": ["constant.character.escape", "string.regexp"], "settings": {"foreground": purple_text}},
+            {"scope": ["support.type.property-name", "entity.name.tag.yaml", "meta.object-literal.key", "support.type.property-name.json"], "settings": {"foreground": cyan_text}},
+            {"scope": ["entity.name.tag", "support.class.component"], "settings": {"foreground": info_text}},
+            {"scope": ["entity.other.attribute-name"], "settings": {"foreground": purple_text}},
+            {"scope": ["entity.other.attribute-name.class", "entity.other.attribute-name.id"], "settings": {"foreground": palette["warning_text"]}},
+            {"scope": ["markup.heading", "entity.name.section"], "settings": {"foreground": palette["accent_text"], "fontStyle": "bold"}},
+            {"scope": ["markup.bold"], "settings": {"foreground": palette["foreground"], "fontStyle": "bold"}},
+            {"scope": ["markup.italic"], "settings": {"foreground": purple_text, "fontStyle": "italic"}},
+            {"scope": ["markup.underline.link", "string.other.link"], "settings": {"foreground": info_text}},
+            {"scope": ["markup.inline.raw", "markup.fenced_code"], "settings": {"foreground": palette["success_text"]}},
+            {"scope": ["markup.quote"], "settings": {"foreground": palette["muted_foreground"], "fontStyle": "italic"}},
+            {"scope": ["punctuation.definition", "punctuation.separator", "punctuation.terminator"], "settings": {"foreground": palette["muted_foreground"]}},
         ],
     }
 
@@ -89,10 +101,16 @@ def build_vsix(plan: Plan, output_path: Path, spec: EditorSpec) -> Path:
 
 
 class VSCodeFamilyAdapter:
-    def __init__(self, spec: EditorSpec, command_runner: Callable[..., Any] | None = None) -> None:
+    def __init__(
+        self,
+        spec: EditorSpec,
+        command_runner: Callable[..., Any] | None = None,
+        app_mode: str | None = None,
+    ) -> None:
         self.spec = spec
         self.target = spec.target
         self.command_runner = command_runner
+        self.app_mode = app_mode if app_mode in {"light", "dark"} else None
         self._extension_dir: Path | None = None
         self._theme_name = f"One Tone {spec.target}"
 
@@ -127,7 +145,7 @@ class VSCodeFamilyAdapter:
             if allow_missing:
                 return {}
             raise FileNotFoundError(f"editor settings not found: {settings_path}")
-        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        payload = loads_jsonc(settings_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("editor settings must be a JSON object")
         return payload
@@ -490,7 +508,8 @@ class VSCodeFamilyAdapter:
             vsix_path = build_vsix(plan, artifacts_dir / f"{self.target}-{plan.id}.vsix", self.spec)
             self.spec.extensions_dir.mkdir(parents=True, exist_ok=True)
             self._remove_installed_extension_state()
-            settings["workbench.colorTheme"] = self._theme_label(plan.mode)
+            active_mode = self.app_mode or plan.mode
+            settings["workbench.colorTheme"] = self._theme_label(active_mode)
             settings["workbench.preferredDarkColorTheme"] = self._theme_label("dark")
             settings["workbench.preferredLightColorTheme"] = self._theme_label("light")
             settings["window.autoDetectColorScheme"] = True
@@ -536,7 +555,7 @@ class VSCodeFamilyAdapter:
 
             for mirror_settings, mirror_extensions in self.spec.mirror_targets:
                 self._remove_installed_extension_state_in(mirror_extensions)
-                self._apply_theme_settings_to(mirror_settings, plan.mode, allow_missing=True)
+                self._apply_theme_settings_to(mirror_settings, active_mode, allow_missing=True)
                 if not self._manual_install_vsix_to(vsix_path, mirror_extensions):
                     return AdapterResult(self.target, "failed", True, False, f"{self.target} mirror extension installation failed at {mirror_extensions}")
 
@@ -598,7 +617,8 @@ class VSCodeFamilyAdapter:
                 if not m_ok:
                     return AdapterResult(self.target, "failed", False, False, m_error)
             settings = self._read_settings()
-            if self.spec.ai_panel_supported:
+            ai_supported = self.spec.ai_panel_supported if self.spec.ai_panel_supported is not None else (self.target == "vscode")
+            if ai_supported:
                 status = "ok"
                 message = f"{self.target} registration and active theme verified"
             else:

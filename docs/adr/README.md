@@ -22,3 +22,5 @@ The accepted decisions about field coverage, the canonical Plan Palette set, use
 [ADR 0013](0013-cross-agent-plugin-distribution.md) records the supported distribution channels and shared Skill package.
 
 [ADR 0014](0014-windows-desktop-wallpaper-mode-matching-and-palette-refinement.md) records `IDesktopWallpaper` multi-monitor sync/verification, effective Windows mode matching without a daemon, OKLCH palette hierarchy/ANSI refinement, and the Terminal Light theme fix.
+
+[ADR 0015](0015-windows-custom-mode-taskbar-zen-palette-and-adaptive-terminal.md) records Windows Custom Mode (`SystemUsesLightTheme = 0`, preserving `AppsUseLightTheme`) for native taskbar accent display, app-mode wallpaper matching, real 8-slot RGB0 `AccentPalette` with `>= 3:1` icon contrast, Zen palette layering/border refinement, system-following Windows Terminal with adaptive PSReadLine syntax colors, and cross-target reliability fixes.

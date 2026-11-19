@@ -67,9 +67,9 @@ Use $zen-one-tone-windows to unify my computer theme with green #22C55E.
 
 ## Usage tips
 
-- **Windows accent color and wallpaper**: Confirmed apply updates the desktop wallpaper and disables transparency effects. If Windows "Automatically pick an accent color from my background" is turned on, Windows may override the fixed accent color; turning that setting off is recommended.
-- **Manual Chrome extension step**: One-Tone generates Light and Dark unpacked Chrome theme folders. Open `chrome://extensions`, enable Developer Mode, and click "Load unpacked" to apply the mode you want.
-- **Light/Dark modes and terminal**: VS Code, TRAE, Antigravity IDE, ChatGPT App, and Antigravity follow the Windows system Light/Dark mode. Windows Terminal registers both `One Tone Light` and `One Tone Dark` and defaults to `One Tone Dark` (requires PowerShell 7 `pwsh`).
+- **Windows accent color and wallpaper**: Confirmed apply updates per-monitor wallpapers, disables transparency effects, and activates Windows Custom Mode (Dark Shell while preserving your Light/Dark app mode) so the taskbar accent color stays natively enabled; wallpapers match your app mode and rollback restores the previous settings. Turning off Windows "Automatically pick an accent color from my background" is still recommended.
+- **Manual Chrome extension step**: One-Tone generates clearly named Light and Dark unpacked Chrome theme folders. Open `chrome://extensions`, enable Developer Mode, and click "Load unpacked" to apply the mode you want.
+- **Light/Dark modes and terminal**: Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, and Antigravity follow your Windows app Light/Dark mode automatically. When PowerShell 7 (`pwsh`) is installed, Terminal sessions also adapt PSReadLine prediction and syntax colors to the active mode.
 - **Personal settings preserved**: Fonts and unrelated settings stay untouched. Unsupported fields in older app versions are left unchanged and reported as `partial`.
 
 ## Repository layout and development

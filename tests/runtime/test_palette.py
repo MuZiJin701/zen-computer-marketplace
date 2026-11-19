@@ -155,8 +155,22 @@ def test_explicit_modes_keep_seed_anchor_and_separate_tonal_surface_roles():
         palette = generate_palette("#7C3AED", mode)
         assert palette["surface"] != "#7C3AED"
         assert len({palette["surface"], palette["surface_subtle"], palette["surface_raised"]}) == 3
-        assert contrast_ratio(palette["surface_subtle"], palette["surface"]) >= 1.2
-        assert contrast_ratio(palette["surface_raised"], palette["surface"]) >= 1.2
+        assert abs(_oklch_components(palette["surface_subtle"])[0] - _oklch_components(palette["surface"])[0]) >= 0.025
+        assert abs(_oklch_components(palette["surface_raised"])[0] - _oklch_components(palette["surface"])[0]) >= 0.025
+
+
+def test_zen_palette_avoids_seed_semantic_collisions_and_keeps_structural_borders_gentle():
+    for seed in ("#22C55E", "#3B82F6", "#F59E0B", "#EF4444"):
+        for mode in ("light", "dark"):
+            palette = generate_palette(seed, mode)
+            assert contrast_ratio(palette["foreground"], palette["surface"]) >= 7
+            assert contrast_ratio(palette["accent"], palette["surface"]) >= 3
+            assert contrast_ratio(palette["border"], palette["surface"]) >= 1.25
+            assert contrast_ratio(palette["selection_background"], palette["surface"]) >= 1.35
+            assert contrast_ratio(palette["selection_foreground"], palette["selection_background"]) >= 4.5
+            for role in ("error_text", "warning_text", "success_text", "info_text", "purple_text", "cyan_text"):
+                assert contrast_ratio(palette[role], palette["surface"]) >= 4.5
+                assert _oklch_hue_distance(palette["accent_text"], palette[role]) >= 0.045
 
 
 def test_explicit_modes_preserve_coherent_tones_and_accent_identity():

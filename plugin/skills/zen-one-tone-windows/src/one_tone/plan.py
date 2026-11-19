@@ -14,14 +14,15 @@ from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 APPEARANCE_POLICY = {
-    "revision": "2026-11-19.v5",
+    "revision": "2026-11-19.v6",
     "windows.EnableTransparency": 0,
-    "windows.wallpaper_mode_matching": "shell_mode_with_idesktopwallpaper",
+    "windows.taskbar_custom_mode": "shell_dark_preserve_app_mode",
+    "windows.wallpaper_mode_matching": "app_mode_with_idesktopwallpaper",
     "antigravity.hub_mode_matching": "app_mode",
-    "terminal": "solid profiles and unfocused appearances; paired native themes; remove fixed tabColor and background images",
+    "terminal": "system-following paired themes and schemes; solid profiles and unfocused appearances; adaptive PSReadLine colors",
     "chatgpt-app.appearanceTheme": "system",
     "fonts": "preserve; repair missing ChatGPT fonts tables only",
-    "system_modes_auto_colorization_high_contrast": "preserve",
+    "app_mode_auto_colorization_high_contrast": "preserve",
     "chrome_activation": "manual",
 }
 

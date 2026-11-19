@@ -468,3 +468,36 @@ def test_editor_adapter_mirrors_standard_settings_and_extension_to_portable_data
     assert not standard_settings.exists()
     assert json.loads(portable_settings.read_text(encoding="utf-8"))["workbench.colorTheme"] == "Default Dark+"
     assert not (portable_extensions / "one-tone.one-tone-antigravity-ide-0.1.0").exists()
+
+
+def test_vscode_reads_jsonc_reports_ok_on_verify_and_includes_expanded_token_colors(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.write_text(
+        '// User VS Code settings\n'
+        '{\n'
+        '  /* keep URL strings intact */\n'
+        '  "http.proxy": "http://127.0.0.1:7890",\n'
+        '  "workbench.colorTheme": "Default Dark+",\n'
+        '}\n',
+        encoding="utf-8",
+    )
+    spec = _editor_spec("vscode", "code", settings, tmp_path / "extensions")
+
+    def command_runner(command, **kwargs):
+        _write_valid_extension(spec)
+        return subprocess.CompletedProcess(command, 0)
+
+    adapter = VSCodeFamilyAdapter(spec, command_runner=command_runner, app_mode="light")
+    plan = create_plan("#22C55E", ["vscode"], plan_id="plan-vscode-jsonc-001")
+
+    assert adapter.detect().status == "ok"
+    assert adapter.apply(plan).status == "ok"
+    verify = adapter.verify(plan)
+    assert verify.verified is True
+    assert verify.status == "ok"
+    saved = json.loads(settings.read_text(encoding="utf-8"))
+    assert saved["http.proxy"] == "http://127.0.0.1:7890"
+    assert saved["workbench.colorTheme"] == "One Tone vscode Light"
+    theme = build_theme_json(plan, "One Tone vscode Light", "light")
+    scopes = {scope for rule in theme["tokenColors"] for scope in rule["scope"]}
+    assert {"markup.heading", "support.type.property-name.json", "entity.name.tag", "entity.other.attribute-name"} <= scopes

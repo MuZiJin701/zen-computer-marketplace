@@ -32,7 +32,8 @@ def test_preview_inventory_uses_actual_windows_and_unknown_editor_capabilities(t
     assert main(["preview", "#22C55E", "--targets", "windows,vscode", "--plans-dir", str(tmp_path / "plans"), "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     fields = {target: {entry["technical_field"]: entry for group in groups.values() for entry in group} for target, groups in payload["field_inventory"].items()}
-    assert fields["windows"]["StartTaskbarColorPrevalence"]["capability_status"] == "unsupported"
+    assert fields["windows"]["StartTaskbarColorPrevalence"]["capability_status"] == "supported"
+    assert fields["windows"]["SystemUsesLightTheme"]["capability_status"] == "supported"
     assert fields["windows"]["EnableTransparency"]["generated_value"] == {"light": 0, "dark": 0}
     assert fields["vscode"]["editor.foreground"]["capability_status"] == "unsupported"
     assert fields["vscode"]["editor.foreground"]["generated_value"] is None

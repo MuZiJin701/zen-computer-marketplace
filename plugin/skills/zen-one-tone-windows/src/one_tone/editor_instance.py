@@ -16,7 +16,7 @@ class EditorSpec:
     executable: str | Path
     settings_path: Path
     extensions_dir: Path
-    ai_panel_supported: bool = False
+    ai_panel_supported: bool | None = None
     artifacts_dir: Path | None = None
     resolution_status: str = "ok"
     resolution_message: str = ""

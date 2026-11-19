@@ -22,12 +22,12 @@ def test_terminal_solid_policy_covers_unfocused_profiles_and_keeps_preferences(t
     adapter.snapshot(tmp_path / "backup")
     assert adapter.apply(plan).changed
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["theme"] == "One Tone Dark"
+    assert data["theme"] == {"light": "One Tone Light", "dark": "One Tone Dark"}
     assert {theme["name"] for theme in data["themes"]} == {"One Tone Light", "One Tone Dark"}
     assert {scheme["name"] for scheme in data["schemes"]} == {"One Tone Light", "One Tone Dark"}
     for profile in (data["profiles"]["defaults"], *data["profiles"]["list"]):
         for state in (profile, profile["unfocusedAppearance"]):
-            assert state["colorScheme"] == "One Tone Dark"
+            assert state["colorScheme"] == {"light": "One Tone Light", "dark": "One Tone Dark"}
             assert state["opacity"] == 100 and state["useAcrylic"] is False
             assert state["backgroundImage"] == ""
             assert "tabColor" not in state
@@ -154,7 +154,7 @@ def test_terminal_apply_registers_and_selects_a_valid_scheme(tmp_path):
     expected_mapping = "One Tone Dark"
     assert changed["profiles"]["defaults"]["colorScheme"] == expected_mapping
     assert all(profile["colorScheme"] == expected_mapping for profile in changed["profiles"]["list"])
-    assert changed["theme"] == "dark"  # unknown host version falls back to built-in dark theme
+    assert changed["theme"] == "system"  # unknown host version falls back to built-in system theme
     palette = plan.palette_for("dark")
     assert all("tabColor" not in profile for profile in changed["profiles"]["list"])
     assert scheme["background"] == palette["surface"]
@@ -330,10 +330,14 @@ def test_terminal_adapter_discovers_and_rolls_back_psreadline_profile(tmp_path):
     changed_profile = profile_path.read_text(encoding="utf-8")
     assert "Set-Alias ll Get-ChildItem" in changed_profile
     assert "if ($env:WT_SESSION)" in changed_profile
+    assert "AppsUseLightTheme" in changed_profile
+    assert "Command =" in changed_profile
+    assert "Parameter =" in changed_profile
     assert "InlinePrediction = $oneToneInlinePrediction" in changed_profile
     assert "ListPredictionSelected = $oneToneListPredictionSelected" in changed_profile
-    red, green, blue = parse_hex_color(plan.palette_for("dark")["prediction_foreground"])
-    assert f"[38;2;{red};{green};{blue}m" in changed_profile
+    for mode in ("light", "dark"):
+        red, green, blue = parse_hex_color(plan.palette_for(mode)["prediction_foreground"])
+        assert f"[38;2;{red};{green};{blue}m" in changed_profile
     assert adapter.apply(plan).status == "partial"
     assert profile_path.read_text(encoding="utf-8") == changed_profile
     assert adapter.verify(plan).verified is True
@@ -461,3 +465,25 @@ def test_terminal_adapter_reports_unsupported_prediction_fields_without_guessing
     result = adapter.apply(plan)
     assert result.status == "partial"
     assert profile_path.read_text(encoding="utf-8") == "Write-Host ready\n"
+
+
+def test_terminal_reads_jsonc_settings_with_comments_and_trailing_commas(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        '// Windows Terminal settings\n'
+        '{\n'
+        '  /* Block comment */\n'
+        '  "defaultProfile": "{one}",\n'
+        '  "profiles": {\n'
+        '    "list": [\n'
+        '      {"name": "PowerShell", "guid": "{one}",},\n'
+        '    ],\n'
+        '  },\n'
+        '}\n',
+        encoding="utf-8",
+    )
+    adapter = TerminalAdapter(settings_path)
+    plan = create_plan("#22C55E", ["terminal"], plan_id="plan-terminal-jsonc-001")
+    assert adapter.detect().status in {"ok", "partial"}
+    assert adapter.apply(plan).changed is True
+    assert adapter.verify(plan).verified is True

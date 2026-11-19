@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from ..inventory import inventory_groups, inventory_report
-from ..palette import contrast_ratio, parse_hex_color
+from ..palette import _oklch_color, _oklch_components, contrast_ratio, parse_hex_color
 from ..plan import Plan
 from ..storage import BYTES_MARKER, atomic_write_text, json_safe
 from .base import AdapterResult
@@ -121,8 +121,11 @@ class InMemoryDesktopBackend:
         self.wallpaper = wallpaper
         self.background_color = background_color
         self.monitor_wallpapers: list[str] | None = [wallpaper] * monitor_count if monitor_count > 1 else None
+        self.refresh_count = 0
 
     def get_wallpaper(self) -> str:
+        if self.monitor_wallpapers:
+            return self.monitor_wallpapers[0]
         return self.wallpaper
 
     def get_wallpapers(self) -> list[str] | None:
@@ -130,10 +133,30 @@ class InMemoryDesktopBackend:
             return list(self.monitor_wallpapers)
         return None
 
+    def get_monitor_wallpapers(self) -> dict[str, str] | None:
+        if self.monitor_wallpapers is not None:
+            return {f"monitor-{idx}": path for idx, path in enumerate(self.monitor_wallpapers)}
+        return None
+
     def set_wallpaper(self, path: str) -> bool:
         self.wallpaper = path
         if self.monitor_wallpapers is not None:
             self.monitor_wallpapers = [path for _ in self.monitor_wallpapers]
+        return True
+
+    def set_monitor_wallpapers(self, mapping: Mapping[str, str]) -> bool:
+        if self.monitor_wallpapers is None:
+            first = next(iter(mapping.values()), "")
+            self.wallpaper = first
+            return True
+        updated = list(self.monitor_wallpapers)
+        for idx in range(len(updated)):
+            key = f"monitor-{idx}"
+            if key in mapping:
+                updated[idx] = mapping[key]
+        self.monitor_wallpapers = updated
+        if updated:
+            self.wallpaper = updated[0]
         return True
 
     def get_background_color(self) -> str | None:
@@ -144,6 +167,7 @@ class InMemoryDesktopBackend:
         return True
 
     def refresh_theme(self) -> None:
+        self.refresh_count += 1
         return None
 
 
@@ -343,6 +367,44 @@ class _DesktopWallpaperCOM:
                     monitors.append(mid)
         return monitors
 
+    def get_monitor_wallpapers(self) -> dict[str, str]:
+        get_wp = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p))(self._vtable[4])
+        monitors = self.active_monitor_ids()
+        result: dict[str, str] = {}
+        for monitor_id in monitors:
+            wp_ptr = ctypes.c_void_p()
+            hr = get_wp(self._ptr, monitor_id, ctypes.byref(wp_ptr))
+            if hr >= 0:
+                value = ctypes.wstring_at(wp_ptr.value) if wp_ptr.value else ""
+                if wp_ptr.value:
+                    self._ole32.CoTaskMemFree(wp_ptr)
+                result[monitor_id] = value
+        return result
+
+    def set_monitor_wallpapers(self, mapping: Mapping[str, str]) -> bool:
+        set_wp = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, wintypes.LPCWSTR)(self._vtable[3])
+        enable_fn = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.BOOL)(self._vtable[18])
+        if not mapping:
+            return self.set_wallpaper("")
+        if all(not path for path in mapping.values()):
+            return self.set_wallpaper("")
+        enable_fn(self._ptr, True)
+        active = set(self.active_monitor_ids())
+        targets = {mid: path for mid, path in mapping.items() if not active or mid in active}
+        if not targets:
+            return self.set_wallpaper(next(iter(mapping.values()), ""))
+        for monitor_id, path in targets.items():
+            if set_wp(self._ptr, monitor_id, path) < 0:
+                return False
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            current = self.get_monitor_wallpapers()
+            if all(_normalize_wallpaper_path(current.get(mid, "")) == _normalize_wallpaper_path(path) for mid, path in targets.items()):
+                return True
+            time.sleep(0.05)
+        current = self.get_monitor_wallpapers()
+        return all(_normalize_wallpaper_path(current.get(mid, "")) == _normalize_wallpaper_path(path) for mid, path in targets.items())
+
     def get_wallpapers(self) -> list[str]:
         get_wp = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p))(self._vtable[4])
         monitors = self.active_monitor_ids()
@@ -411,6 +473,26 @@ class WindowsDesktopBackend:
         if not ctypes.windll.user32.SystemParametersInfoW(0x0042, state.cbSize, ctypes.byref(state), 0):
             return None
         return bool(state.dwFlags & 0x00000001)
+
+    def get_monitor_wallpapers(self) -> dict[str, str] | None:
+        try:
+            with _DesktopWallpaperCOM() as com:
+                if com is not None:
+                    mapping = com.get_monitor_wallpapers()
+                    return mapping or None
+        except OSError:
+            return None
+        return None
+
+    def set_monitor_wallpapers(self, mapping: Mapping[str, str]) -> bool:
+        try:
+            with _DesktopWallpaperCOM() as com:
+                if com is not None and com.set_monitor_wallpapers(mapping):
+                    return True
+        except OSError:
+            pass
+        first = next(iter(mapping.values()), "")
+        return self.set_wallpaper(first)
 
     def get_wallpapers(self) -> list[str] | None:
         try:
@@ -545,38 +627,44 @@ def _blend_color(first: str, second: str, second_weight: float) -> str:
     )
 
 
-def _shell_accent(accent: str) -> str:
-    # ponytail: AccentPalette slot semantics are not publicly stable; keep the
-    # complete Shell ramp safe for its fixed white glyphs.
-    for darkening in range(101):
-        candidate = _blend_color(accent, "#000000", darkening / 100)
-        if contrast_ratio(_blend_color(candidate, "#FFFFFF", 0.2), "#FFFFFF") >= 4.5:
+def _shell_accent(accent: str, minimum_ratio: float = 3.0) -> str:
+    # Keep the Windows Shell accent vibrant in OKLCH while protecting fixed white
+    # glyphs on Start, Taskbar, Titlebar, and Quick Settings.
+    if contrast_ratio(accent, "#FFFFFF") >= minimum_ratio:
+        return accent
+    lightness, chroma, hue = _oklch_components(accent)
+    start = min(90, max(10, round(lightness * 100)))
+    for step in range(start, 4, -1):
+        candidate = _oklch_color(hue, step / 100, chroma)
+        if contrast_ratio(candidate, "#FFFFFF") >= minimum_ratio:
             return candidate
-    raise AssertionError("black must satisfy white foreground contrast")
+    raise AssertionError("dark OKLCH candidate must satisfy white glyph contrast")
 
 
 def generate_accent_palette(accent: str) -> bytes:
-    shell_accent = _shell_accent(accent)
+    """Build Windows 10/11 8-slot AccentPalette in genuine RGB0 order (Light3..Base..Dark3, Extra)."""
+    shell_accent = _shell_accent(accent, 3.0)
+    base_l, base_c, hue = _oklch_components(shell_accent)
+    dark1 = _shell_accent(_oklch_color(hue, max(0.20, base_l - 0.08), base_c * 0.95), 4.5)
+    dark1_l = _oklch_components(dark1)[0]
     colors = [
-        shell_accent,
-        _blend_color(shell_accent, "#FFFFFF", 0.05),
-        _blend_color(shell_accent, "#FFFFFF", 0.10),
-        _blend_color(shell_accent, "#FFFFFF", 0.15),
-        _blend_color(shell_accent, "#FFFFFF", 0.20),
-        _blend_color(shell_accent, "#000000", 0.2),
-        _blend_color(shell_accent, "#000000", 0.4),
-        _blend_color(shell_accent, "#000000", 0.6),
+        _oklch_color(hue, min(0.95, base_l + 0.28), base_c * 0.65),  # Slot 0: Light3
+        _oklch_color(hue, min(0.92, base_l + 0.20), base_c * 0.85),  # Slot 1: Light2
+        _oklch_color(hue, min(0.88, base_l + 0.11), base_c),         # Slot 2: Light1
+        shell_accent,                                                 # Slot 3: Base accent
+        dark1,                                                        # Slot 4: Dark1 (>= 4.5:1 on white)
+        _oklch_color(hue, max(0.15, dark1_l - 0.08), base_c * 0.85), # Slot 5: Dark2
+        _oklch_color(hue, max(0.10, dark1_l - 0.16), base_c * 0.72), # Slot 6: Dark3
+        _oklch_color((hue + 0.08) % 1.0, max(0.25, dark1_l), base_c * 0.80),  # Slot 7: Extra
     ]
-    return b"".join(bytes((*reversed(parse_hex_color(color)), 0)) for color in colors)
+    return b"".join(bytes((*parse_hex_color(color), 0)) for color in colors)
 
 
 def effective_windows_mode(
     plan_mode: str,
-    shell_mode: str | None = None,
     app_mode: str | None = None,
+    shell_mode: str | None = None,
 ) -> str:
-    if shell_mode in {"light", "dark"}:
-        return shell_mode
     if app_mode in {"light", "dark"}:
         return app_mode
     return plan_mode
@@ -585,33 +673,30 @@ def effective_windows_mode(
 def _theme_registry_values(plan: Plan, mode: str | None = None) -> dict[str, int | bytes | str]:
     palette = plan.palette_for(mode or plan.mode)
     shell_accent = _shell_accent(palette["accent"])
-    inactive_accent = _shell_accent(palette["surface_subtle"])
     accent = windows_color_value(shell_accent)
     surface_rgb = " ".join(str(channel) for channel in parse_hex_color(palette["surface"]))
     values: dict[str, int | bytes | str] = {
         "EnableTransparency": 0,
+        "SystemUsesLightTheme": 0,
+        "StartTaskbarColorPrevalence": 1,
         "TitleBarColorPrevalence": 1,
         "AccentColorMenu": accent,
         "StartColorMenu": accent,
         "AccentPalette": generate_accent_palette(palette["accent"]),
         "AccentColor": accent,
-        "AccentColorInactive": windows_color_value(inactive_accent),
+        "AccentColorInactive": windows_color_value(palette["surface_subtle"]),
         "ColorizationColor": windows_colorization_value(shell_accent),
         "ColorizationAfterglow": windows_colorization_value(shell_accent),
         "Background": surface_rgb,
     }
-    values["StartTaskbarColorPrevalence"] = 1
     return values
 
 
-def _field_statuses(plan: Plan, status: str, shell_mode: str, mode: str | None = None) -> dict[str, str]:
+def _field_statuses(plan: Plan, status: str, shell_mode: str = "dark", mode: str | None = None) -> dict[str, str]:
     statuses = {name: status for name in _theme_registry_values(plan, mode=mode)}
     statuses["wallpaper"] = status
-    if shell_mode != "dark":
-        statuses["StartTaskbarColorPrevalence"] = "unsupported"
     statuses.update({
         "AppsUseLightTheme": "not-applicable",
-        "SystemUsesLightTheme": "not-applicable",
         "AutoColorization": "not-applicable",
         "highContrast": "not-applicable",
     })
@@ -665,25 +750,43 @@ class WindowsAdapter:
         return "light" if value == 1 else "dark" if value == 0 else "unknown"
 
     def _effective_mode(self, plan: Plan) -> str:
-        shell_mode = self._mode("SystemUsesLightTheme")
         app_mode = self._mode("AppsUseLightTheme")
-        if shell_mode == "unknown" and app_mode == "unknown":
+        if app_mode == "unknown":
             instance = plan.target_instances.get("windows", {})
-            shell_mode = str(instance.get("shell_mode", "unknown"))
             app_mode = str(instance.get("app_mode", "unknown"))
-        return effective_windows_mode(plan.mode, shell_mode, app_mode)
+        return effective_windows_mode(plan.mode, app_mode=app_mode)
 
-    def _wallpaper_matches(self, expected_path: str, expected_background_color: str | None = None) -> bool:
-        expected_norm = _normalize_wallpaper_path(expected_path)
-        get_wallpapers = getattr(self.desktop, "get_wallpapers", None)
-        wallpapers = get_wallpapers() if callable(get_wallpapers) else None
-        if wallpapers is not None:
-            if not wallpapers:
+    def _wallpaper_matches(
+        self,
+        expected_path: str,
+        expected_background_color: str | None = None,
+        expected_monitor_wallpapers: Mapping[str, str] | None = None,
+    ) -> bool:
+        if expected_monitor_wallpapers:
+            get_mon = getattr(self.desktop, "get_monitor_wallpapers", None)
+            actual_mon = get_mon() if callable(get_mon) else None
+            if actual_mon is not None:
+                if not all(
+                    _normalize_wallpaper_path(actual_mon.get(mid, "")) == _normalize_wallpaper_path(path)
+                    for mid, path in expected_monitor_wallpapers.items()
+                    if mid in actual_mon
+                ):
+                    return False
+            else:
+                expected_norm = _normalize_wallpaper_path(expected_path)
+                if _normalize_wallpaper_path(self.desktop.get_wallpaper()) != expected_norm:
+                    return False
+        else:
+            expected_norm = _normalize_wallpaper_path(expected_path)
+            get_wallpapers = getattr(self.desktop, "get_wallpapers", None)
+            wallpapers = get_wallpapers() if callable(get_wallpapers) else None
+            if wallpapers is not None:
+                if not wallpapers:
+                    return False
+                if not all(_normalize_wallpaper_path(item) == expected_norm for item in wallpapers):
+                    return False
+            elif _normalize_wallpaper_path(self.desktop.get_wallpaper()) != expected_norm:
                 return False
-            if not all(_normalize_wallpaper_path(item) == expected_norm for item in wallpapers):
-                return False
-        elif _normalize_wallpaper_path(self.desktop.get_wallpaper()) != expected_norm:
-            return False
         if expected_background_color is not None:
             get_bg = getattr(self.desktop, "get_background_color", None)
             actual_bg = get_bg() if callable(get_bg) else None
@@ -704,7 +807,7 @@ class WindowsAdapter:
             "system_mode": app_mode,
             "app_mode": app_mode,
             "shell_mode": shell_mode,
-            "effective_mode": effective_windows_mode("dark", shell_mode, app_mode),
+            "effective_mode": effective_windows_mode("dark", app_mode=app_mode),
             "selected_mode_is_independent": True,
             "automatic_accent_enabled": self._auto_colorization_active(),
             "high_contrast": high_contrast,
@@ -729,23 +832,36 @@ class WindowsAdapter:
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
         try:
+            import shutil
+
             backup_dir.mkdir(parents=True, exist_ok=True)
             old_path = self.desktop.get_wallpaper()
+            get_mon = getattr(self.desktop, "get_monitor_wallpapers", None)
+            monitor_wallpapers = get_mon() if callable(get_mon) else None
             registry_values = self.registry.snapshot_values(THEME_VALUES)
             get_bg = getattr(self.desktop, "get_background_color", None)
             background_color = get_bg() if callable(get_bg) else None
             if background_color is None:
                 background_color = _rgb_string_to_hex(registry_values.get("Background"))
-            metadata = {
+            wallpaper_backups: dict[str, str] = {}
+            if old_path and Path(old_path).is_file():
+                shutil.copy2(old_path, backup_dir / "original-wallpaper")
+                wallpaper_backups[old_path] = "original-wallpaper"
+            if isinstance(monitor_wallpapers, dict):
+                for idx, path in enumerate(monitor_wallpapers.values()):
+                    if path and path not in wallpaper_backups and Path(path).is_file():
+                        backup_name = f"original-wallpaper-{idx}"
+                        shutil.copy2(path, backup_dir / backup_name)
+                        wallpaper_backups[path] = backup_name
+            metadata: dict[str, Any] = {
                 "registry": {name: _json_safe_registry_value(value) for name, value in registry_values.items()},
                 "wallpaper": old_path,
                 "background_color": background_color,
             }
+            if isinstance(monitor_wallpapers, dict) and monitor_wallpapers:
+                metadata["monitor_wallpapers"] = dict(monitor_wallpapers)
+                metadata["wallpaper_backups"] = wallpaper_backups
             atomic_write_text(backup_dir / "windows.json", json.dumps(metadata, sort_keys=True))
-            if old_path and Path(old_path).is_file():
-                import shutil
-
-                shutil.copy2(old_path, backup_dir / "original-wallpaper")
             return AdapterResult(self.target, "ok", False, True, "Windows theme and wallpaper snapshot saved", version=self._version)
         except (OSError, TypeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Windows snapshot failed: {error}")
@@ -776,19 +892,14 @@ class WindowsAdapter:
                 {**registry_values, "wallpaper": str(self._wallpaper_path)},
                 effective_mode=effective_mode,
             )
-            if auto_colorization or self._mode("SystemUsesLightTheme") != "dark":
-                message = "theme colors and generated wallpaper applied"
-                if self._mode("SystemUsesLightTheme") != "dark":
-                    message += "; actual Shell mode limits taskbar accent display; rendering untested"
-                if auto_colorization:
-                    message += "; turn off Windows automatic accent color to keep the selected accent"
+            if auto_colorization:
                 return AdapterResult(
                     self.target,
                     "partial",
                     True,
                     False,
-                    message,
-                    auto_colorization,
+                    "theme colors and generated wallpaper applied; turn off Windows automatic accent color to keep the selected accent",
+                    True,
                     version=self._version,
                     metadata=metadata,
                 )
@@ -821,19 +932,14 @@ class WindowsAdapter:
             {**expected_registry, "wallpaper": str(expected_path)},
             effective_mode=effective_mode,
         )
-        if verified and (auto_colorization or self._mode("SystemUsesLightTheme") != "dark"):
-            message = "Windows theme and wallpaper verified"
-            if self._mode("SystemUsesLightTheme") != "dark":
-                message += "; actual Shell mode limits taskbar accent display; rendering untested"
-            if auto_colorization:
-                message += "; automatic accent color is still enabled and may overwrite the accent later"
+        if verified and auto_colorization:
             return AdapterResult(
                 self.target,
                 "partial",
                 False,
                 True,
-                message,
-                auto_colorization,
+                "Windows theme and wallpaper verified; automatic accent color is still enabled and may overwrite the accent later",
+                True,
                 version=self._version,
                 metadata=metadata,
             )
@@ -845,6 +951,8 @@ class WindowsAdapter:
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:
         try:
+            import shutil
+
             metadata = json.loads((backup_dir / "windows.json").read_text(encoding="utf-8"))
             registry_values = {name: _registry_value_from_json(value) for name, value in metadata["registry"].items()}
             auto_colorization = registry_values.pop("AutoColorization", None)
@@ -853,13 +961,21 @@ class WindowsAdapter:
             self.registry.restore_values(registry_values)
             old_path = str(metadata.get("wallpaper", ""))
             old_bg_color = metadata.get("background_color") or _rgb_string_to_hex(registry_values.get("Background"))
+            monitor_wallpapers = metadata.get("monitor_wallpapers")
+            wallpaper_backups = metadata.get("wallpaper_backups") or {}
             original_backup = backup_dir / "original-wallpaper"
             if old_path and original_backup.is_file():
-                import shutil
-
                 shutil.copy2(original_backup, old_path)
+            if isinstance(wallpaper_backups, dict):
+                for dest_path, backup_name in wallpaper_backups.items():
+                    backup_file = backup_dir / str(backup_name)
+                    if dest_path and backup_file.is_file():
+                        shutil.copy2(backup_file, dest_path)
             try:
-                if not self.desktop.set_wallpaper(old_path):
+                if isinstance(monitor_wallpapers, dict) and monitor_wallpapers and callable(getattr(self.desktop, "set_monitor_wallpapers", None)):
+                    if not self.desktop.set_monitor_wallpapers(monitor_wallpapers):
+                        return AdapterResult(self.target, "failed", True, False, "Windows wallpaper restore was rejected")
+                elif not self.desktop.set_wallpaper(old_path):
                     return AdapterResult(self.target, "failed", True, False, "Windows wallpaper restore was rejected")
                 if isinstance(old_bg_color, str):
                     set_bg = getattr(self.desktop, "set_background_color", None)
@@ -871,13 +987,18 @@ class WindowsAdapter:
                     self.registry.delete_value("AutoColorization")
                 else:
                     self.registry.set_value("AutoColorization", auto_colorization)
+            self.desktop.refresh_theme()
             restored = all(
                 self.registry.get_value(name) == registry_values.get(name)
                 for name in registry_values
                 if name != "AutoColorization"
             )
             restored = restored and self.registry.get_value("AutoColorization") == auto_colorization
-            restored = restored and self._wallpaper_matches(old_path, expected_background_color=old_bg_color if isinstance(old_bg_color, str) else None)
+            restored = restored and self._wallpaper_matches(
+                old_path,
+                expected_background_color=old_bg_color if isinstance(old_bg_color, str) else None,
+                expected_monitor_wallpapers=monitor_wallpapers if isinstance(monitor_wallpapers, dict) else None,
+            )
             return AdapterResult(self.target, "ok" if restored else "failed", True, restored, "Windows theme and wallpaper restored" if restored else "Windows restore verification failed", version=self._version)
         except (OSError, KeyError, json.JSONDecodeError) as error:
             return AdapterResult(self.target, "failed", False, False, f"Windows rollback failed: {error}")

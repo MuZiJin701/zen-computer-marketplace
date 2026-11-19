@@ -67,9 +67,9 @@ skills remove zen-one-tone-windows
 
 ## 使用提示
 
-- **Windows 强调色与壁纸**：应用后会同步壁纸并关闭系统透明效果；如果 Windows 设置里开启了“自动从背景中选取强调色”，系统可能会覆盖固定主色，建议先关闭该开关。
-- **Chrome 主题手动加载**：工具会在输出目录生成浅色和深色两套未打包扩展目录，请打开 Chrome 的 `chrome://extensions`（开启右上角“开发者模式”），点击“加载已解压的扩展程序”选择想要的模式目录。
-- **明暗模式与终端**：VS Code、TRAE、Antigravity IDE、ChatGPT App 和 Antigravity 会跟随系统浅/深色模式；Windows Terminal 会同时注册 `One Tone Light` 与 `One Tone Dark` 配色方案并默认启用深色主题（依赖 PowerShell 7 `pwsh`）。
+- **Windows 强调色与壁纸**：应用后会同步逐屏壁纸并关闭系统透明效果，并自动采用 Windows 原生自定义模式（系统外壳深色 + 保持你的应用浅/深模式）以稳定显示任务栏主题色，壁纸跟随你的应用深浅模式，回滚时原样恢复；如果开启了“自动从背景中选取强调色”，系统可能会覆盖固定主色，建议先关闭该开关。
+- **Chrome 主题手动加载**：工具会在输出目录生成区分 Light/Dark 名称的两套未打包扩展目录，请打开 Chrome 的 `chrome://extensions`（开启右上角“开发者模式”），点击“加载已解压的扩展程序”选择想要的模式目录。
+- **明暗模式与终端**：Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App 和 Antigravity 均默认跟随系统应用浅/深色模式自动切换；若安装了 PowerShell 7（`pwsh`），终端启动时还会自动适配对应深浅模式的预测与语法色。
 - **保留个人设置**：不会改动你的字体或无关偏好；旧版应用不支持的字段会保持原样并标记为 `partial`。
 
 ## 仓库结构与本地开发

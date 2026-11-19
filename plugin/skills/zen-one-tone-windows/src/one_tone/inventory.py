@@ -45,7 +45,7 @@ for _target in ("terminal", "vscode", "trae", "antigravity-ide"):
     FIELD_INVENTORY[_target] = tuple(mapping.field for mapping in field_mappings_for(_target))
 
 PRESERVED_FIELDS = {
-    "windows": ("AppsUseLightTheme", "SystemUsesLightTheme", "AutoColorization", "highContrast", "system.fonts"),
+    "windows": ("AppsUseLightTheme", "AutoColorization", "highContrast", "system.fonts"),
     "terminal": tuple(f"profile.font.{name}" for name in ("face", "size", "weight", "features", "axes", "cellWidth", "cellHeight")) +
                 tuple(f"profile.{name}" for name in ("padding", "antialiasingMode", "intenseTextStyle", "cursorShape", "cursorHeight")) +
                 ("tab.showCloseButton", "tab.iconStyle", "window.experimental.rainbowFrame"),
@@ -239,7 +239,7 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "field_category": (
                     "theme_structure" if name.endswith(".fonts")
                     else "font" if "font" in name.casefold()
-                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "appearanceTheme", "userSettings.themeMode"} or name.endswith(".accentSource") or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
+                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "SystemUsesLightTheme", "appearanceTheme", "userSettings.themeMode"} or name.endswith(".accentSource") or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
                     else "color"
                 ),
                 "visual_role": mapping.visual_role if mapping else _field_role(name),
@@ -308,8 +308,6 @@ def expected_capabilities(targets: tuple[str, ...], target_instances=None) -> di
         elif target == "windows":
             if instance.get("high_contrast") is not False:
                 result[target].update({name: "unsupported" for name, status in result[target].items() if status == "supported"})
-            elif instance.get("shell_mode") != "dark":
-                result[target]["StartTaskbarColorPrevalence"] = "unsupported"
         if instance.get("status") == "skipped":
             result[target].update({name: "unsupported" for name, status in result[target].items() if status == "supported"})
     return result

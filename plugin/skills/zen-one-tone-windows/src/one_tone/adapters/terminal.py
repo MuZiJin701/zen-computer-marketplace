@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +14,7 @@ from typing import Any, Callable, Mapping
 from ..palette import contrast_ratio, parse_hex_color
 from ..plan import Plan
 from ..field_mappings import TERMINAL_APPEARANCE_FIELDS, terminal_capabilities, terminal_palette_key, terminal_scheme_colors
-from ..storage import atomic_write_text
+from ..storage import atomic_write_text, loads_jsonc
 from .base import AdapterResult, field_capabilities
 
 _SCHEME_NAME = "One Tone"
@@ -71,24 +73,83 @@ def _checked_text_color(palette: Mapping[str, str], role: str, background: str) 
     return color
 
 
+def _win32_file_version(executable: Path) -> str | None:
+    if not executable.is_file() or not hasattr(ctypes, "windll") or not hasattr(ctypes.windll, "version"):
+        return None
+    try:
+        version_dll = ctypes.windll.version
+        size = version_dll.GetFileVersionInfoSizeW(str(executable), None)
+        if not size:
+            return None
+        buffer = ctypes.create_string_buffer(size)
+        if not version_dll.GetFileVersionInfoW(str(executable), 0, size, buffer):
+            return None
+        value_ptr = ctypes.c_void_p()
+        value_len = ctypes.c_uint()
+        if not version_dll.VerQueryValueW(buffer, "\\", ctypes.byref(value_ptr), ctypes.byref(value_len)):
+            return None
+        if not value_ptr.value or value_len.value < 16:
+            return None
+        raw = ctypes.string_at(value_ptr.value, 16)
+        _sig, _struc, file_ms, file_ls = struct.unpack("<IIII", raw)
+        return f"{file_ms >> 16}.{file_ms & 0xFFFF}.{file_ls >> 16}.{file_ls & 0xFFFF}"
+    except (OSError, ValueError):
+        return None
+
+
+def _psreadline_mode_lines(palette: Mapping[str, str], prediction_color: str, selected_foreground_role: str) -> list[str]:
+    info_text = palette.get("info_text", palette["accent_text"])
+    cyan_text = palette.get("cyan_text", palette["accent_text"])
+    purple_text = palette.get("purple_text", palette["accent_text"])
+    selected_expr = f"{_ansi_expression(palette[selected_foreground_role])} + {_ansi_expression(palette['selection_background'], True)}"
+    return [
+        f"    $oneToneInlinePrediction = {_ansi_expression(prediction_color)}",
+        f"    $oneToneListPrediction = {_ansi_expression(prediction_color)}",
+        f"    $oneToneListPredictionSelected = {selected_expr}",
+        "    $oneToneSyntaxColors = @{",
+        f"      Default = {_ansi_expression(palette['foreground'])}",
+        f"      Comment = {_ansi_expression(palette['muted_foreground'])}",
+        f"      Keyword = {_ansi_expression(palette['accent_text'])}",
+        f"      Command = {_ansi_expression(info_text)}",
+        f"      Parameter = {_ansi_expression(cyan_text)}",
+        f"      Operator = {_ansi_expression(palette['accent_text'])}",
+        f"      Variable = {_ansi_expression(purple_text)}",
+        f"      String = {_ansi_expression(palette['success_text'])}",
+        f"      Number = {_ansi_expression(palette['warning_text'])}",
+        f"      Member = {_ansi_expression(cyan_text)}",
+        f"      Type = {_ansi_expression(cyan_text)}",
+        f"      Error = {_ansi_expression(palette['error_text'])}",
+        f"      Emphasis = {_ansi_expression(palette['accent_text'])}",
+        f"      Selection = {selected_expr}",
+        "    }",
+    ]
+
+
 def _prediction_profile_block(plan: Plan) -> str:
     light = plan.palette_for("light")
     dark = plan.palette_for("dark")
     prediction_role = terminal_palette_key("InlinePrediction")
     selected_foreground_role = terminal_palette_key("ListPredictionSelected")
-    _checked_text_color(light, prediction_role, light["surface"])
+    light_prediction = _checked_text_color(light, prediction_role, light["surface"])
     dark_prediction = _checked_text_color(dark, prediction_role, dark["surface"])
     lines = [
         _PROFILE_START,
         "if ($env:WT_SESSION) {",
-        f"  $oneToneInlinePrediction = {_ansi_expression(dark_prediction)}",
-        f"  $oneToneListPrediction = {_ansi_expression(dark_prediction)}",
-        f"  $oneToneListPredictionSelected = {_ansi_expression(dark[selected_foreground_role])} + {_ansi_expression(dark['selection_background'], True)}",
-        "  Set-PSReadLineOption -Colors @{",
+        "  $oneToneIsLight = $false",
+        "  try {",
+        "    $oneToneIsLight = (Get-ItemPropertyValue -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize' -Name 'AppsUseLightTheme' -ErrorAction Stop) -eq 1",
+        "  } catch {}",
+        "  if ($oneToneIsLight) {",
+        *_psreadline_mode_lines(light, light_prediction, selected_foreground_role),
+        "  } else {",
+        *_psreadline_mode_lines(dark, dark_prediction, selected_foreground_role),
+        "  }",
+        "  $oneToneColors = $oneToneSyntaxColors + @{",
         "    InlinePrediction = $oneToneInlinePrediction",
         "    ListPrediction = $oneToneListPrediction",
         "    ListPredictionSelected = $oneToneListPredictionSelected",
         "  }",
+        "  Set-PSReadLineOption -Colors $oneToneColors",
         "}",
         _PROFILE_END,
     ]
@@ -211,7 +272,7 @@ def _generated_values(plan: Plan) -> dict[str, Any]:
         profile = None
     values = {
         **_scheme_colors(plan, "dark"),
-        "profile.colorScheme": _SCHEME_MAPPING["dark"],
+        "profile.colorScheme": dict(_SCHEME_MAPPING),
         **{name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items()
            if name not in {"window.frame", "window.unfocusedFrame"}},
         "window.applicationTheme": theme["window"]["applicationTheme"],
@@ -268,15 +329,19 @@ class TerminalAdapter:
                     return
                 executable = Path(match[1])
             # Read the executable version resource without launching a Terminal window.
-            escaped = str(executable).replace("'", "''")
-            completed = self._command_runner(
-                [shutil.which("pwsh") or "pwsh", "-NoProfile", "-NonInteractive", "-Command",
-                 f"(Get-Item -LiteralPath '{escaped}').VersionInfo.FileVersion"],
-                capture_output=True, text=True, check=False, timeout=10,
-            )
-            version = (completed.stdout or "").strip()
+            version = _win32_file_version(executable) if self._command_runner is subprocess.run else None
+            returncode = 0
+            if not version:
+                escaped = str(executable).replace("'", "''")
+                completed = self._command_runner(
+                    [shutil.which("pwsh") or "pwsh", "-NoProfile", "-NonInteractive", "-Command",
+                     f"(Get-Item -LiteralPath '{escaped}').VersionInfo.FileVersion"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+                returncode = completed.returncode
+                version = (completed.stdout or "").strip()
             match = re.fullmatch(r"(\d+)\.(\d+)\.\d+(?:\.\d+)?", version)
-            supported = completed.returncode == 0 and match is not None and tuple(map(int, match.groups())) >= (1, 16)
+            supported = returncode == 0 and match is not None and tuple(map(int, match.groups())) >= (1, 16)
             self._native_info = {
                 "status": "supported" if supported else "unsupported",
                 "executable": str(executable), "version": version,
@@ -438,7 +503,7 @@ class TerminalAdapter:
             return handle.read()
 
     def _read(self) -> dict[str, Any]:
-        payload = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        payload = loads_jsonc(self.settings_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("Terminal settings must be a JSON object")
         profiles = payload.get("profiles", {})
@@ -501,7 +566,7 @@ class TerminalAdapter:
             profile_color_keys = (*_palette_colors(plan), "cursorColor")
             settings["profiles"].setdefault("defaults", {})
             appearance_capabilities = self._appearance_capabilities()
-            profile_scheme = _SCHEME_MAPPING["dark"]
+            profile_scheme: Any = dict(_SCHEME_MAPPING) if appearance_capabilities["profile.colorScheme"] == "supported" else _SCHEME_MAPPING["dark"]
             for profile in _profile_appearances(settings):
                 if not isinstance(profile, dict):
                     continue
@@ -538,7 +603,7 @@ class TerminalAdapter:
                 theme = {**previous, **theme}
                 themes.append(theme)
             settings["themes"] = themes
-            settings["theme"] = _SCHEME_MAPPING["dark"] if appearance_capabilities["theme"] == "supported" else "dark"
+            settings["theme"] = dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system"
             atomic_write_text(
                 self.settings_path,
                 json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
@@ -568,7 +633,7 @@ class TerminalAdapter:
             expected = _palette_colors(plan)
             self._discover_native_correction()
             appearance_capabilities = self._appearance_capabilities()
-            profile_scheme = _SCHEME_MAPPING["dark"]
+            profile_scheme: Any = dict(_SCHEME_MAPPING) if appearance_capabilities["profile.colorScheme"] == "supported" else _SCHEME_MAPPING["dark"]
             native_supported = self._native_info["status"] == "supported"
             native_verified = not native_supported or all(
                 profile.get("adjustIndistinguishableColors") == "always" for profile in _profile_appearances(settings)
@@ -598,7 +663,7 @@ class TerminalAdapter:
                 )
                 and native_verified
                 and settings.get("profiles", {}).get("defaults", {}).get("colorScheme") == profile_scheme
-                and settings.get("theme") == (_SCHEME_MAPPING["dark"] if appearance_capabilities["theme"] == "supported" else "dark")
+                and settings.get("theme") == (dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system")
                 and all(paired_schemes.get(f"One Tone {mode.title()}") == _scheme_colors(plan, mode) for mode in ("light", "dark"))
                 and all(
                     isinstance(paired_themes.get(f"One Tone {mode.title()}"), dict)

@@ -28,9 +28,21 @@ _Avoid_: 把 Accent 直接当作所有背景
 
 **Appearance-safe Palette**
 
-同时满足可读性、相邻区域区分和视觉舒适度的 Palette；它限制大面积饱和度、保持 Accent 的色相身份，并避免普通角色无理由坍缩为纯黑或纯白。
+同时满足文字可读性、视觉层级区分和极简舒适度（Zen）的 Palette；它严格保证正文 `7:1` 与功能/语义文字 `4.5:1`，在 OKLCH 中提供通透浅色与沉稳深色表面层级，区分柔和结构边框与高对比交互焦点边界，保持 Accent 色相身份，避免主色与代码语义色撞车，并禁止普通角色无理由坍缩为纯黑或纯白。
 
-_Avoid_: 只通过对比度检查的 Palette
+_Avoid_: 只通过对比度检查的 Palette、把所有装饰边框都强制高对比度
+
+**Structural border**
+
+用于分隔面板、卡片、标题栏和列表区域的低存在感结构分隔线；它在相邻背景上保持可见层级，但不要求达到交互控件的 `3:1` 高对比度门槛。
+
+_Avoid_: 焦点边框、强强调色边框
+
+**Interactive boundary**
+
+用于焦点环、活动强调控件、主要按钮边框或明确交互态的视觉边界；它需要保持高辨识度（`>= 3:1`），与低存在感的 Structural border 分开。
+
+_Avoid_: 所有面板分割线
 
 **Visual role**  
 Palette 中描述一种稳定视觉语义的角色，例如 surface、surface_subtle、surface_raised、foreground、selection 或 border。  
@@ -127,27 +139,27 @@ _Avoid_: 任务栏一定会显示的颜色
 
 **Taskbar accent display**
 
-Windows Shell 是否把 Accent color 显示到开始菜单和任务栏的独立能力；它受系统模式和用户设置限制。
+Windows Shell 把 Accent color 显示到开始菜单和任务栏的能力；Windows 仅在 Shell 为深色模式（`SystemUsesLightTheme = 0`）时原生支持并保留该开关。为在浅色应用环境下也原生保住任务栏主题色，One-Tone 采用 Windows 原生自定义模式（将 `SystemUsesLightTheme` 设为深色 `0`，同时保持用户 `AppsUseLightTheme` 不变），并在 Rollback 时恢复原始值。
 
-_Avoid_: Accent color 本身
+_Avoid_: 绕过设置在浅色 Shell 下强写后被系统重置、修改用户应用深浅模式
 
 **Windows Shell active tile**
 
-Windows 快速设置中显示固定白色系统图标的活动卡片；它和 Start、任务栏、标题栏使用同一对比度安全的 Shell Accent，并以白色图标至少 `4.5:1` 的对比度验收。
+Windows 快速设置、开始菜单、任务栏和活动标题栏中承载白色系统图标的强调色区域；它与微软 8 槽 `AccentPalette` 协同工作，基础 Shell Accent 以 WCAG 图形/图标 `3:1` 对比度保护白色图标，兼顾主色还原度与图标清晰度。
 
-_Avoid_: 只校验 AccentPalette 注册表回读
+_Avoid_: 只校验 AccentPalette 注册表回读、把整个 8 槽压成单一暗色
 
 **Desktop wallpaper state**
 
-Windows Explorer 通过现代 `IDesktopWallpaper` 接口实际生效的多屏壁纸路径与底色状态，而非仅指旧版注册表 `Control Panel\Desktop\WallPaper` 的回读值。
+Windows Explorer 通过现代 `IDesktopWallpaper` 接口实际生效的多屏壁纸路径与底色状态，而非仅指旧版注册表 `Control Panel\Desktop\WallPaper` 的回读值；多屏快照和回滚按屏幕分别保留与恢复。
 
-_Avoid_: 仅以注册表壁纸路径代替真实桌面状态
+_Avoid_: 仅以注册表壁纸路径代替真实桌面状态、多屏只备份主屏
 
 **Effective Windows mode**
 
-在 Preview、Apply 与 Verify 阶段，单模式目标根据 Windows 当前深浅设置解析出的实际 Palette Mode：Windows 外壳（壁纸、底色与强调色）跟随 `SystemUsesLightTheme`（未知时回退 `AppsUseLightTheme`，再回退 `plan.mode`），Antigravity Hub 底色（`hubSurfaceBackgroundColor`）跟随 `AppsUseLightTheme`（未知时回退 `plan.mode`）。工具不修改系统深浅开关，也不运行后台常驻监听。
+在 Preview、Apply 与 Verify 阶段，单模式目标根据 Windows 当前应用模式（`AppsUseLightTheme`，未知时回退 `plan.mode`）解析出的实际 Palette Mode，用于决定桌面壁纸、桌面底色、非活动标题栏及 Antigravity Hub 底色（`hubSurfaceBackgroundColor`）。工具保持用户应用深浅偏好、不运行后台常驻监听，仅将 Shell 外壳模式（`SystemUsesLightTheme`）切换为深色以原生承载任务栏主题色。
 
-_Avoid_: 强制切换系统深浅模式、后台主题监听服务
+_Avoid_: 让壁纸跟随外壳深色导致浅色应用配深色壁纸、后台主题监听服务
 
 ### Target language
 
@@ -235,13 +247,13 @@ _Avoid_: 可能存在的字段、未经验证的私有字段
 _Avoid_: 用 Target 总体状态掩盖字段差异
 
 **Mode**  
-用户可见的浅色或深色主题变体。Mode 只描述同一 Seed Color 的呈现变体，不等于 Windows 系统模式；工具不替用户切换系统模式。
-_Avoid_: 强制模式、运行模式
+用户可见的浅色或深色主题变体。Mode 只描述同一 Seed Color 的呈现变体，不等于 Windows 应用深浅开关；工具保持用户的应用深浅模式（`AppsUseLightTheme`），仅将 Windows 外壳（`SystemUsesLightTheme`）设为深色以原生承载任务栏主题色，并在 Rollback 时恢复。
+_Avoid_: 强制切换应用深浅、运行模式
 
 **Mode coherence**
 
-同一 Seed Color 的 Light 与 Dark 变体共享色相、区域层级和主题身份，同时允许浅色模式拥有真正明亮干净的表面（OKLCH 明度跨度上限 `0.75`，Light 表面亮度上限 `0.96`），深色模式保持深邃层次。Windows Terminal 默认固定激活深色主题（`One Tone Dark`），同时保留浅色与深色两套配色方案供手动切换。
-_Avoid_: 压暗浅色表面以迁就窄跨度、把 Terminal 默认设为浅色
+同一 Seed Color 的 Light 与 Dark 变体共享色相、区域层级和主题身份，浅色模式保持通透干净的明亮表面，深色模式保持深邃沉稳的暗色表面。支持双模式的 Target（Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App 和 Antigravity 桌面端）默认自动跟随 Windows 应用模式（`AppsUseLightTheme`）切换 Light/Dark。
+_Avoid_: 压暗浅色表面以迁就窄跨度、把 Terminal 默认锁定为单一深色
 
 ### Workflow language
 
@@ -290,7 +302,7 @@ _Avoid_: 大致成功
 - Palette 提供 Visual role。
 - Target Adapter 把 Color field 映射到 Visual role。
 - Git decoration 是 Target 的语义状态 Color field，使用语义文字 role 和实际相邻背景。
-- Inline prediction 属于 `terminal` Target 的可选 Shell/PSReadLine 子能力，Profile 位置和能力在 Preview 中发现，并受同一 Transaction 安全流程约束。
+- Inline prediction 与 PSReadLine 核心语法配色属于 `terminal` Target 的可选 Shell/PSReadLine 子能力，Profile 位置和能力在 Preview 中发现，运行时按当前 Windows 应用模式（`AppsUseLightTheme`）自动切换浅/深配色，并受同一 Transaction 安全流程约束。
 - Native foreground correction 属于终端宿主能力；Configuration match 与 Rendering acceptance 分别记录，SSH 的远端输出由本地宿主渲染。
 - Field inventory 定义应核查的 Appearance field，其中 Color field 是颜色与色调子集。
 - Plan 保存一次 Preview 的 Target 和 Mode 预期。

@@ -38,15 +38,18 @@ _CONTRAST_PAIRS = (
 )
 
 REGION_SEPARATION_PAIRS = (
-    ("surface_subtle", "surface", 1.2),
-    ("surface_raised", "surface", 1.2),
-    ("surface", "background", 1.2),
+    ("surface_subtle", "surface", 0.025),
+    ("surface_raised", "surface", 0.025),
+    ("surface", "background", 0.05),
 )
 
 INTERACTIVE_SEPARATION_PAIRS = (
     ("accent", "surface", 3),
-    ("selection_background", "surface", 3),
-    ("border", "surface", 3),
+)
+
+STRUCTURAL_SEPARATION_PAIRS = (
+    ("border", "surface", 1.25),
+    ("selection_background", "surface", 1.35),
 )
 
 MODE_ACCENT_HUE_TOLERANCE = 0.04
@@ -475,42 +478,82 @@ def _muted_foreground(surface: str, foreground: str, hue: float, mode: str) -> s
     return _readable_foreground((surface,), 4.5, hue=0.52)
 
 
+def _non_colliding_hue(base_hue: float, avoid_hues: tuple[float, ...], min_distance: float = 0.055) -> float:
+    if not avoid_hues or min(_circular_hue_distance(base_hue, other) for other in avoid_hues) >= min_distance:
+        return base_hue
+    for magnitude in (0.06, 0.075, 0.09):
+        pair = [(base_hue + magnitude) % 1.0, (base_hue - magnitude) % 1.0]
+        valid = [c for c in pair if min(_circular_hue_distance(c, other) for other in avoid_hues) >= min_distance]
+        if valid:
+            return max(valid, key=lambda c: min(_circular_hue_distance(c, other) for other in avoid_hues))
+    candidates = [(base_hue + offset) % 1.0 for offset in (0.06, -0.06, 0.08, -0.08)]
+    return max(
+        candidates,
+        key=lambda candidate: min(_circular_hue_distance(candidate, other) for other in avoid_hues),
+    )
+
+
 def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     seed = _to_hex(parse_hex_color(seed_color))
     _lightness, seed_chroma, hue = _oklch_components(seed)
     if mode == "dark":
-        tonal_chroma = min(0.034, max(0.012, seed_chroma * 0.18))
-        background = _oklch_color(hue, 0.20, tonal_chroma)
-        surface = _oklch_color(hue, 0.30, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.22, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.38, tonal_chroma)
+        tonal_chroma = min(0.026, max(0.008, seed_chroma * 0.14))
+        background = _oklch_color(hue, 0.185, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.215, tonal_chroma)
+        surface = _oklch_color(hue, 0.250, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.295, tonal_chroma)
     else:
-        tonal_chroma = min(0.024, max(0.010, seed_chroma * 0.14))
-        background = _oklch_color(hue, 0.825, tonal_chroma)
-        surface = _oklch_color(hue, 0.910, tonal_chroma)
-        surface_subtle = _oklch_color(hue, 0.835, tonal_chroma)
-        surface_raised = _oklch_color(hue, 0.976, tonal_chroma)
+        tonal_chroma = min(0.018, max(0.006, seed_chroma * 0.10))
+        background = _oklch_color(hue, 0.890, tonal_chroma)
+        surface_subtle = _oklch_color(hue, 0.920, tonal_chroma)
+        surface = _oklch_color(hue, 0.950, tonal_chroma)
+        surface_raised = _oklch_color(hue, 0.980, tonal_chroma)
     background_foreground = _readable_foreground((background,), 7)
     foreground = _readable_foreground(
         (surface,), 7, minimum_lightness=2 if mode == "light" else 4
     )
     muted_foreground = _muted_foreground(surface, foreground, hue, mode)
     accent = _contrast_safe_accent(seed, surface, preserve_identity=True, allow_low_chroma=True)
-    accent_lightness, accent_chroma, accent_hue = _oklch_components(accent)
-    selection_background = _oklch_color(accent_hue, accent_lightness, accent_chroma * 0.72)
+    _accent_lightness, accent_chroma, accent_hue = _oklch_components(accent)
+    surface_lightness = _oklch_components(surface)[0]
+    selection_chroma = min(0.085, max(0.022, accent_chroma * 0.45)) if seed_chroma >= 0.035 else 0.02
+    selection_lightness = 0.82 if mode == "light" else 0.36
+    selection_background = _oklch_color(accent_hue, selection_lightness, selection_chroma)
     if (
-        contrast_ratio(selection_background, surface) < 3
+        contrast_ratio(selection_background, surface) < 1.35
         or contrast_ratio(_readable_foreground((selection_background,), 4.5), selection_background) < 4.5
     ):
-        selection_background = accent
-    border_lightness = accent_lightness - 0.12 if accent_lightness > 0.5 else accent_lightness + 0.12
-    border = _oklch_color(accent_hue, max(0.04, min(0.96, border_lightness)), accent_chroma * 0.72)
-    if contrast_ratio(border, surface) < 3:
-        border = accent
+        selection_background = _oklch_color(accent_hue, 0.78 if mode == "light" else 0.40, selection_chroma)
+    border_chroma = min(0.042, max(0.012, seed_chroma * 0.22)) if seed_chroma >= 0.035 else 0.012
+    border_lightness = surface_lightness - 0.11 if mode == "light" else surface_lightness + 0.13
+    border = _oklch_color(accent_hue, max(0.08, min(0.92, border_lightness)), border_chroma)
+    if contrast_ratio(border, surface) < 1.25:
+        border = _oklch_color(accent_hue, max(0.08, min(0.92, surface_lightness - 0.16 if mode == "light" else surface_lightness + 0.18)), border_chroma)
     accent_text_hue = hue if seed_chroma >= 0.035 else 0.68
-    error = "#F05252"
-    warning = "#F3B95F"
-    success = "#42D392"
+    accent_text = _semantic_text_color((surface,), 4.5, accent_text_hue)
+    accent_actual_hue = _oklch_components(accent_text)[2]
+    semantic_base = (
+        ("error_text", 0.07),
+        ("warning_text", 0.19),
+        ("success_text", 0.42),
+        ("cyan_text", 0.56),
+        ("info_text", 0.70),
+        ("purple_text", 0.83),
+    )
+    resolved_semantic_hues: dict[str, float] = {}
+    all_default_hues = {role_name: default_hue for role_name, default_hue in semantic_base}
+    for role_name, default_hue in semantic_base:
+        other_defaults = tuple(
+            resolved_semantic_hues.get(other_name, other_hue)
+            for other_name, other_hue in all_default_hues.items()
+            if other_name != role_name
+        )
+        avoid = ((accent_actual_hue,) + other_defaults) if seed_chroma >= 0.035 else other_defaults
+        resolved_semantic_hues[role_name] = _non_colliding_hue(default_hue, avoid)
+    fill_lightness = 0.56 if mode == "light" else 0.68
+    error = _oklch_color(resolved_semantic_hues["error_text"], fill_lightness, 0.17)
+    warning = _oklch_color(resolved_semantic_hues["warning_text"], 0.66 if mode == "light" else 0.76, 0.15)
+    success = _oklch_color(resolved_semantic_hues["success_text"], fill_lightness, 0.15)
     palette = {
         "background": background,
         "background_foreground": background_foreground,
@@ -520,20 +563,20 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
         "foreground": foreground,
         "muted_foreground": muted_foreground,
         "accent": accent,
-        "accent_text": _semantic_text_color((surface,), 4.5, accent_text_hue),
+        "accent_text": accent_text,
         "accent_foreground": _readable_foreground((accent,), 4.5),
         "selection_background": selection_background,
         "selection_foreground": _readable_foreground((selection_background,), 4.5),
         "border": border,
         "error": error,
-        "error_text": _semantic_text_color((surface,), 4.5, 0.07),
+        "error_text": _semantic_text_color((surface,), 4.5, resolved_semantic_hues["error_text"]),
         "warning": warning,
-        "warning_text": _semantic_text_color((surface,), 4.5, 0.19),
+        "warning_text": _semantic_text_color((surface,), 4.5, resolved_semantic_hues["warning_text"]),
         "success": success,
-        "success_text": _semantic_text_color((surface,), 4.5, 0.42),
-        "info_text": _semantic_text_color((surface,), 4.5, 0.70),
-        "purple_text": _semantic_text_color((surface,), 4.5, 0.83),
-        "cyan_text": _semantic_text_color((surface,), 4.5, 0.56),
+        "success_text": _semantic_text_color((surface,), 4.5, resolved_semantic_hues["success_text"]),
+        "info_text": _semantic_text_color((surface,), 4.5, resolved_semantic_hues["info_text"]),
+        "purple_text": _semantic_text_color((surface,), 4.5, resolved_semantic_hues["purple_text"]),
+        "cyan_text": _semantic_text_color((surface,), 4.5, resolved_semantic_hues["cyan_text"]),
     }
     errors = validate_palette(palette, mode=mode)
     if errors:
@@ -660,7 +703,12 @@ def validate_palette(palette: Mapping[str, str], *, mode: str | None = None) -> 
                 errors.append(f"appearance safety: {role} must not be pure black or white")
             if role in tonal_roles and _oklch_components(color)[1] > 0.06:
                 errors.append(f"appearance safety: {role} chroma is too high for a large area")
-        for foreground, background, minimum_ratio in REGION_SEPARATION_PAIRS + INTERACTIVE_SEPARATION_PAIRS:
+        for first, second, minimum_delta in REGION_SEPARATION_PAIRS:
+            if first in palette and second in palette and not ({first, second} & invalid_keys):
+                delta = abs(_oklch_components(palette[first])[0] - _oklch_components(palette[second])[0])
+                if delta < minimum_delta:
+                    errors.append(f"separation: {first}/{second} OKLCH deltaL is {delta:.3f}, required >= {minimum_delta:g}")
+        for foreground, background, minimum_ratio in INTERACTIVE_SEPARATION_PAIRS + STRUCTURAL_SEPARATION_PAIRS:
             if foreground in palette and background in palette and not ({foreground, background} & invalid_keys):
                 ratio = contrast_ratio(palette[foreground], palette[background])
                 if ratio < minimum_ratio:

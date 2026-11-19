@@ -20,7 +20,7 @@ from .adapters import (
     WindowsConfig,
 )
 from .editor_instance import EditorSpec, editor_spec_from_plan, resolve_editor_spec
-from .adapters.antigravity import _generated_values as _antigravity_generated_values
+from .adapters.antigravity import _generated_values as _antigravity_generated_values, detect_windows_app_mode
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
 from .adapters.chrome import _manifest
 from .adapters.codex import _theme_updates
@@ -259,6 +259,7 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
         "ONE_TONE_CHROME_PREFERENCES",
         [localappdata / "Google/Chrome/User Data/Default/Preferences"],
     )
+    app_mode = detect_windows_app_mode()
     registry = {}
     for target in targets:
         if target == "windows":
@@ -271,13 +272,13 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
                 terminal_executable=terminal_executable if target_instances is None else None,
             )
         elif target == "vscode":
-            registry[target] = VSCodeFamilyAdapter(vscode_spec)
+            registry[target] = VSCodeFamilyAdapter(vscode_spec, app_mode=app_mode)
         elif target == "cursor":
             registry[target] = UnsupportedAdapter(target)
         elif target == "trae":
-            registry[target] = VSCodeFamilyAdapter(trae_spec)
+            registry[target] = VSCodeFamilyAdapter(trae_spec, app_mode=app_mode)
         elif target == "antigravity-ide":
-            registry[target] = VSCodeFamilyAdapter(antigravity_ide_spec)
+            registry[target] = VSCodeFamilyAdapter(antigravity_ide_spec, app_mode=app_mode)
         elif target == "chatgpt-app":
             registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None)
         elif target == "antigravity":
@@ -312,7 +313,7 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
             generated["window.applicationTheme"] = mode
         elif target == "windows":
             win_instance = plan.target_instances.get("windows", {})
-            win_mode = effective_windows_mode(plan.mode, win_instance.get("shell_mode"), win_instance.get("app_mode"))
+            win_mode = effective_windows_mode(plan.mode, app_mode=win_instance.get("app_mode"))
             generated = {**_theme_registry_values(plan, mode=win_mode), "wallpaper": {"color": plan.palette_for(win_mode)["surface"]}}
         else:
             generated = {}

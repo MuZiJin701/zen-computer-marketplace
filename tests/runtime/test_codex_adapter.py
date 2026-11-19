@@ -82,10 +82,45 @@ def test_codex_default_path_uses_userprofile(monkeypatch, tmp_path):
 
 def test_codex_unknown_config_is_skipped(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text("[desktop]\nappearanceTheme = 'dark'\n", encoding="utf-8")
+    path.write_text('model = "o3"\n', encoding="utf-8")
     result = CodexAdapter(path).detect()
     assert result.status == "skipped"
     assert "chatgpt-app-config-v1" in result.message
+
+
+def test_codex_initializes_missing_chrome_theme_tables_and_handles_inline_semantic_colors(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[desktop]\nappearanceTheme = "dark"\nunrelated = "keep"\n',
+        encoding="utf-8",
+    )
+    original = path.read_bytes()
+    adapter = CodexAdapter(path)
+    plan = create_plan("#22C55E", ["chatgpt-app"], plan_id="plan-codex-init-001")
+
+    assert adapter.detect().status == "ok"
+    assert adapter.snapshot(tmp_path / "backup").status == "ok"
+    assert adapter.apply(plan).status == "ok"
+    assert adapter.verify(plan).verified is True
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert payload["desktop"]["unrelated"] == "keep"
+    assert payload["desktop"]["appearanceTheme"] == "system"
+    assert "appearanceLightChromeTheme" in payload["desktop"]
+    assert "appearanceDarkChromeTheme" in payload["desktop"]
+    assert adapter.rollback(tmp_path / "backup").verified is True
+    assert path.read_bytes() == original
+
+    # Inline semanticColors table must be cleanly replaced without duplicate TOML keys.
+    path.write_text(
+        '[desktop]\nappearanceTheme = "dark"\n\n'
+        '[desktop.appearanceLightChromeTheme]\n'
+        'surface = "#FFFFFF"\n'
+        'semanticColors = { diffAdded = "#00FF00", diffRemoved = "#FF0000", skill = "#0000FF" }\n',
+        encoding="utf-8",
+    )
+    adapter2 = CodexAdapter(path)
+    assert adapter2.apply(plan).status == "ok"
+    assert adapter2.verify(plan).verified is True
 
 
 def test_codex_malformed_toml_is_skipped(tmp_path):

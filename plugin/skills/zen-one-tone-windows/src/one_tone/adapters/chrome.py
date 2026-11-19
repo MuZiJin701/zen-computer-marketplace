@@ -19,10 +19,16 @@ def _rgb(color: str) -> list[int]:
     return list(parse_hex_color(color))
 
 
-def _tint(color: str) -> list[float]:
+def _tint(color: str, *, mode: str = "dark", field: str = "") -> list[float]:
+    """Encode Chromium HSL shift [H, S, L] where 0.5 is neutral/unchanged for S and L."""
     red, green, blue = (channel / 255 for channel in parse_hex_color(color))
-    hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
-    return [round(hue, 4), round(saturation, 4), round(lightness, 4)]
+    hue, _lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
+    shift_s = round(max(0.35, min(0.75, 0.5 + (saturation - 0.5) * 0.4)), 4)
+    if field == "buttons":
+        shift_l = 0.38 if mode == "light" else 0.68
+    else:
+        shift_l = 0.5
+    return [round(hue, 4), shift_s, shift_l]
 
 
 def _manifest(plan: Plan, mode: str | None = None) -> dict[str, Any]:
@@ -35,11 +41,11 @@ def _manifest(plan: Plan, mode: str | None = None) -> dict[str, Any]:
     return {
         "manifest_version": 3,
         "version": "1.0.0",
-        "name": f"One Tone {plan.id}",
+        "name": f"One Tone {plan.id} {mode.title()}",
         "description": "Palette-generated One-Tone Chrome theme",
         "theme": {
             "colors": {field: _rgb(values[role]) for field, role in CHROME_COLOR_ROLES.items()},
-            "tints": {field: _tint(values[role]) for field, role in CHROME_TINT_ROLES.items()},
+            "tints": {field: _tint(values[role], mode=mode, field=field) for field, role in CHROME_TINT_ROLES.items()},
             "properties": {"ntp_logo_alternate": int(mode == "dark")},
         },
     }
