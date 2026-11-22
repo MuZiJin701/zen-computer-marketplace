@@ -197,8 +197,8 @@ R2025a 及以上采用新 Web 桌面架构的 Windows MATLAB 客户端（Target 
 _Avoid_: MATLAB 旧版 Java 桌面（<= R2024b）、MATLAB 绘图主题、修改安装包 themes.json
 
 **Live-process write guard**
-对在退出时会用内存配置树覆盖磁盘文件的 Target（如 MATLAB desktop app），在 Apply 与 Rollback 前检查目标进程是否运行并拒绝盲写的安全边界；它不强行终止用户进程，也不把被守卫阻断的状态伪报为成功。
-_Avoid_: 强制结束进程、静默覆写、后台监听同步
+对在退出时会用内存配置树覆盖磁盘文件的 Target（如 MATLAB desktop app），在 Apply 与 Rollback 前检查目标进程是否运行并拒绝盲写的安全边界；当进程枚举失败或状态未知时按 fail-closed 同样阻断写入，既不强行终止用户进程，也不把被守卫阻断的状态伪报为成功。
+_Avoid_: 强制结束进程、静默覆写、检测失败放行、后台监听同步
 
 **Standard editor configuration priority**
 对于 VS Code、TRAE 和 Antigravity IDE，工具优先解析并使用 C 盘标准配置目录（`%APPDATA%\<Editor>\User\settings.json` 与 `~/.<editor>/extensions`）作为主目标实例；若同一可执行文件旁已存在 Scoop 便携版 `data/` 目录或启动器目录，工具同步镜像写入、快照、校验和回滚该目录，避免因启动入口不同而漏加载主题，同时不修改或破坏 Scoop 目录结构。

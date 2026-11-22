@@ -63,6 +63,56 @@ class TransactionRecord:
         )
 
 
+def _is_aborted_before_write(item: Mapping[str, Any]) -> bool:
+    metadata = item.get("metadata")
+    return (
+        not item.get("changed", False)
+        and isinstance(metadata, Mapping)
+        and metadata.get("aborted_before_write") is True
+    )
+
+
+def _target_rollback_eligibility(operation_results: list[dict[str, Any]]) -> tuple[bool, bool, bool]:
+    """Return (has_snapshot, skipped_without_change, already_restored) for one target's operations."""
+    has_snapshot = any(
+        item.get("operation") == "snapshot" and item.get("status") in {"ok", "partial"}
+        for item in operation_results
+    )
+    applied_ops = [item for item in operation_results if item.get("operation") == "apply"]
+    skipped_without_change = (
+        (
+            not has_snapshot
+            and any(item.get("operation") in {"detect", "snapshot"} and item.get("status") not in {"ok", "partial"} for item in operation_results)
+            and not applied_ops
+        )
+        or (
+            bool(applied_ops)
+            and all(
+                (item.get("status") == "skipped" and not item.get("changed", False))
+                or _is_aborted_before_write(item)
+                for item in applied_ops
+            )
+        )
+    )
+    already_restored = any(
+        item.get("operation") in {"auto_rollback", "rollback"}
+        and item.get("status") in {"ok", "partial"}
+        and item.get("verified") is True
+        for item in operation_results
+    )
+    return has_snapshot, skipped_without_change, already_restored
+
+
+def _is_restorable_transaction(record: TransactionRecord) -> bool:
+    if record.status in {TransactionStatus.PENDING, TransactionStatus.ROLLED_BACK}:
+        return False
+    for target in record.targets:
+        has_snapshot, skipped_without_change, already_restored = _target_rollback_eligibility(record.results.get(target, []))
+        if has_snapshot and not skipped_without_change and not already_restored:
+            return True
+    return False
+
+
 def _transaction_id() -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"tx-{timestamp}-{uuid.uuid4().hex[:6]}"
@@ -128,7 +178,7 @@ class TransactionStore:
                     record = self.load(path.name)
                 except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, ValueError):
                     continue
-                if record.status in {TransactionStatus.PENDING, TransactionStatus.ROLLED_BACK}:
+                if not _is_restorable_transaction(record):
                     continue
                 candidates.append((record.created_at, record.id))
         if not candidates:
@@ -163,12 +213,26 @@ class TransactionStore:
     def rollback(self, transaction_id: str, adapters: Mapping[str, ThemeAdapter]) -> TransactionRecord:
         record = self.load(transaction_id)
         failed = False
+        rolled_back_targets = 0
         for target in record.targets:
             operation_results = record.results.get(target, [])
-            has_snapshot = any(
-                item.get("operation") == "snapshot" and item.get("status") in {"ok", "partial"}
-                for item in operation_results
-            )
+            has_snapshot, skipped_without_change, already_restored = _target_rollback_eligibility(operation_results)
+            if already_restored:
+                self.append_operation(
+                    record,
+                    target,
+                    "rollback",
+                    AdapterResult(target, "skipped", False, False, "target already restored and verified; skipping duplicate rollback"),
+                )
+                continue
+            if skipped_without_change:
+                self.append_operation(
+                    record,
+                    target,
+                    "rollback",
+                    AdapterResult(target, "skipped", False, False, "target was skipped without modification; nothing to roll back"),
+                )
+                continue
             if not has_snapshot:
                 self.append_operation(
                     record,
@@ -186,7 +250,9 @@ class TransactionStore:
             self.append_operation(record, target, "rollback", result)
             if result.status not in {"ok", "partial"} or not result.verified:
                 failed = True
-        record.status = TransactionStatus.FAILED if failed else TransactionStatus.ROLLED_BACK
+            else:
+                rolled_back_targets += 1
+        record.status = TransactionStatus.FAILED if (failed or rolled_back_targets == 0) else TransactionStatus.ROLLED_BACK
         self.save(record)
         return record
 
@@ -259,17 +325,31 @@ def apply_plan(
             unsuccessful_targets = True
             continue
 
-        applied = _with_field_evidence(adapter.apply(plan))
+        apply_with_backup = getattr(adapter, "apply_with_backup", None)
+        if callable(apply_with_backup):
+            applied = _with_field_evidence(apply_with_backup(plan, target_backup))
+        else:
+            applied = _with_field_evidence(adapter.apply(plan))
         store.append_operation(record, target, "apply", applied)
         if applied.status == "partial" or applied.requires_user_action:
             partial = True
-        if applied.status not in {"ok", "partial"}:
-            restored = adapter.rollback(target_backup, record.target_metadata.get(target))
-            store.append_operation(record, target, "auto_rollback", restored)
+        if applied.status == "skipped" and not applied.changed:
             partial = True
             unsuccessful_targets = True
-            if restored.status not in {"ok", "partial"} or not restored.verified:
-                compensation_failed = True
+            continue
+        if applied.status not in {"ok", "partial"}:
+            aborted_before_write = (
+                not applied.changed
+                and isinstance(applied.metadata, dict)
+                and applied.metadata.get("aborted_before_write") is True
+            )
+            if not aborted_before_write:
+                restored = adapter.rollback(target_backup, record.target_metadata.get(target))
+                store.append_operation(record, target, "auto_rollback", restored)
+                if restored.status not in {"ok", "partial"} or not restored.verified:
+                    compensation_failed = True
+            partial = True
+            unsuccessful_targets = True
             continue
 
         verified = _with_field_evidence(adapter.verify(plan))

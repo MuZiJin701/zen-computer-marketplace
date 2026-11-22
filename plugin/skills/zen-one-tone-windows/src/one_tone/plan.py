@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -14,7 +15,7 @@ from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 APPEARANCE_POLICY = {
-    "revision": "2026-11-22.v7",
+    "revision": "2026-11-22.v8",
     "windows.EnableTransparency": 0,
     "windows.taskbar_custom_mode": "shell_dark_preserve_app_mode",
     "windows.wallpaper_mode_matching": "app_mode_with_idesktopwallpaper",
@@ -22,6 +23,7 @@ APPEARANCE_POLICY = {
     "terminal": "system-following paired themes and schemes; solid profiles and unfocused appearances; adaptive PSReadLine colors",
     "chatgpt-app.appearanceTheme": "system",
     "matlab.MATLABTheme": "System",
+    "matlab.contrast_guard": "body>=7.0;syntax>=4.5-across-surface-and-highlights",
     "fonts": "preserve; repair missing ChatGPT fonts tables only",
     "app_mode_auto_colorization_high_contrast": "preserve",
     "chrome_activation": "manual",
@@ -206,6 +208,8 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
     target_instances = payload.get("target_instances")
     if not isinstance(target_instances, dict):
         raise PlanIntegrityError(f"Plan target instances are invalid for {plan_id}")
+    if "matlab" in payload["targets"] and "matlab" not in target_instances:
+        raise PlanIntegrityError(f"Plan is missing frozen matlab target instance for {plan_id}")
     for target, instance in target_instances.items():
         validate_safe_component(target, "target")
         if target not in payload["targets"] or not isinstance(instance, dict):
@@ -224,6 +228,12 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
         )
         if target not in {"vscode", "trae", "antigravity-ide"} and status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
+        if target == "matlab" and status == "ok":
+            if not Path(str(instance["settings_path"])).is_absolute():
+                raise PlanIntegrityError(f"Plan matlab settings_path must be absolute for {plan_id}")
+            release_match = re.match(r"^R(\d{4})([ab])$", str(instance["release"]).strip(), re.IGNORECASE)
+            if not release_match or int(release_match.group(1)) < 2025:
+                raise PlanIntegrityError(f"Plan matlab release is invalid for {plan_id}")
         if target == "terminal" and any(
             key in instance and not isinstance(instance.get(key), str)
             for key in ("powershell_executable", "profile_path")

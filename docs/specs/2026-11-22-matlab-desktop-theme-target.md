@@ -22,24 +22,26 @@ Windows 上的新版 MATLAB（R2025a 及以上 Web 桌面架构）支持原生 `
   - 明确标注为 **verified runtime schema**（`matlab-mlsettings-v1`，实测基线 `R2026a`），不伪称 MathWorks 公开文件格式承诺。
 - **实例发现优先级（冻结进 Plan）**：
   1. 显式覆盖：`ONE_TONE_MATLAB_SETTINGS`（直接指向 `matlab.mlsettings`）或 `MATLAB_PREFDIR`（指向含 `matlab.mlsettings` 的目录）；
-  2. 注册表 `HKLM\SOFTWARE\MathWorks\MATLAB\*`（读取 `MATLABROOT` 与 `<MATLABROOT>\VersionInfo.xml`）结合 `%APPDATA%\MathWorks\MATLAB\R20*`，按版本号从新到旧选取最新一个 `>= R2025a` 且存在有效 `matlab.mlsettings` 的实例；
-  3. 不凭空伪造新的 `matlab.mlsettings` 文件。
-- **受管字段与保留项**：
+  2. 注册表 `HKLM\SOFTWARE\MathWorks\MATLAB\*`（读取 `MATLABROOT` 与 `<MATLABROOT>\VersionInfo.xml`）结合 `%APPDATA%\MathWorks\MATLAB\R20*`，按版本号从新到旧选取最新一个 `>= R2025a` 且存在有效 `matlab.mlsettings`（且归档内部声明的 `release` 与目录/注册表版本一致）的实例；
+  3. 所有冻结路径规范化为绝对路径；包含 `matlab` 的 Plan 必须携带冻结的 `target_instances["matlab"]`（`load_plan()` 缺失时报错，CLI `build_target_adapters()` 不回退实时发现），运行时同时校验未重定向的绝对路径（拒绝符号链接/目录联接重定向）与目标 `release` 一致性，不凭空伪造新的 `matlab.mlsettings` 文件。
+- **受管字段、对比度保底与保留项**：
   - `matlab.appearance.MATLABTheme` → `"System"`。
-  - `matlab.colors.DesktopColors`（`light` / `dark` JSON）：`BackgroundColor`（`surface`）、`ForegroundColor`（`foreground`，正文 `>= 7:1`）。
-  - `matlab.colors.SyntaxHighlightingColors`（`light` / `dark` JSON，共 19 项）：`CodeColor`、`NormalColor`、`KeywordColor`、`CommentColor`、`StringColor`、`UnterminatedStringColor`、`SystemCommandColor`、`ValidationSectionColor`、`SyntaxErrorColor`、`ErrorColor`、`WarningColor`、`HyperlinkColor`、`CodeAnalyzerWarningColor`、`CodeAnalyzerInfoColor`、`AutofixHighlightColor`、`VariableHighlightColor`、`VariablesWithSharedScopeColor`、`HighlightCurrentLineColor`、`LineColor`。
-  - Light 单键 RGB（`int32 [1,3]`）同步：`matlab.colors.*`（7 项）、`matlab.colors.commandwindow.*`（3 项）、`matlab.colors.programmingtools.*`（5 项）、`matlab.editor.displaysettings.HighlightCurrentLineColor`、`matlab.editor.displaysettings.linelimit.LineColor`。
+  - `matlab.colors.DesktopColors`（`light` / `dark` JSON）：`BackgroundColor`（`surface`）、`ForegroundColor`（`foreground`，在 `BackgroundColor` 与 `HighlightCurrentLineColor` 上 `>= 7:1`）。
+  - `matlab.colors.SyntaxHighlightingColors`（`light` / `dark` JSON，共 19 项）：`CodeColor`、`NormalColor`、`KeywordColor`、`CommentColor`、`StringColor`、`UnterminatedStringColor`、`SystemCommandColor`、`ValidationSectionColor`、`SyntaxErrorColor`、`ErrorColor`、`WarningColor`、`HyperlinkColor`、`CodeAnalyzerWarningColor`、`CodeAnalyzerInfoColor`、`AutofixHighlightColor`、`VariableHighlightColor`、`VariablesWithSharedScopeColor`、`HighlightCurrentLineColor`、`LineColor`；全部语法/命令行/Code Analyzer 文字色在 `BackgroundColor`、`HighlightCurrentLineColor`、`AutofixHighlightColor` 与 `VariableHighlightColor` 四个背景上均满足 `>= 4.5:1`。
+  - Light 单键 RGB（`int32 [1,3]`）同步：`matlab.colors.*`（7 项）、`matlab.colors.commandwindow.*`（3 项）、`matlab.colors.programmingtools.*`（5 项）、`matlab.editor.displaysettings.HighlightCurrentLineColor`、`matlab.editor.displaysettings.linelimit.LineColor`（与 Light JSON 使用同一组经对比度保底的色值）。
+  - **单次读取与严格校验**：每次操作单次读取 `matlab.mlsettings` 字节流并在内存中校验与构建；`Apply` 核验当前输入与本事务 `Snapshot` 记录的 `snapshot_sha256` 一致，并在 `os.replace` 前先完成最终进程枚举再复核路径未重定向与磁盘字节一致（杜绝 Snapshot 与 Apply 间及最终枚举期间的并发篡改）。严格校验 ZIP 成员唯一性（拒绝同名重复成员）、`mwcorePropertiesReleaseInfo.xml` 中的 `<release>`（非法或空值直接拒绝，不回退到目录名）、`filesystemManifest.xml`（根标签、子项属性、唯一性与目标文件存在性）及所有已存在的受管 `settings.json` 分组形态（含严格布尔 `hasValue`、`isVector` 标量/向量标志与值编码校验）；损坏档案 fail-closed 拒绝覆盖，对已锁定有效实例事后损坏时 `Verify` 报 `failed`（而非 `skipped`），且强制要求每个受管项 `hasValue = true` 与 `isVector` 匹配。
   - **保留项**：`matlab.appearance.figure.GraphicsTheme`、字体配置、所有功能开关（`HighlightCurrentLine`、`ShowLine`、`HighlightAutofixes`、`AutomaticallyHighlightVariables`、`ShowVariablesWithSharedScope`）以及所有无关设置键。
   - **不支持项**：窗口 Chrome（Toolstrip、顶部 Header、侧边栏、标签页等内置 `themes.json` 令牌），固定 `unsupported`，不修改安装目录。
-- **运行态防覆盖守卫（`Live-process write guard`）**：
-  - 通过可注入的进程检测函数检测 `MATLAB.exe`（Windows 下只读进程枚举）。
-  - Apply 遇到运行中 `MATLAB.exe` 返回 `skipped`（附关闭提示），不破坏其他 Target；Rollback 遇到运行中 `MATLAB.exe` 返回 `failed`（禁止静默成功）。
+- **运行态防覆盖守卫（`Live-process write guard`）与幂等回滚语义**：
+  - 通过显式 Win32 ctypes 原型的只读进程枚举检测 `MATLAB.exe`（可注入测试）；在入口和临时 ZIP 写完、`os.replace` 前各检查一次（最终枚举结束后再做路径与字节复核），`Process32NextW` 结束必须返回 `ERROR_NO_MORE_FILES`（错误码 `0` 或其他枚举错误均按 **fail-closed** 阻断写入并清理临时文件）。
+  - Apply 遇到运行中或状态未知的 MATLAB 返回 `skipped`（`changed = false`，附关闭提示）；Apply 在写入前因校验/并发变更中止时返回 `failed`（`changed = false`，标记 `aborted_before_write = true`）。事务引擎明确区分写入前中止与写入后失败，不对未写入目标触发 `auto_rollback`（防止补偿回滚覆盖并发修改）；Rollback 遇到运行中或状态未知的 MATLAB 返回 `failed`（禁止静默成功）。
+  - 多目标事务 Rollback 时，对原事务中从未写入变更的目标（含 `skipped` 与 `aborted_before_write`）以及此前已验证恢复的目标记为 `skipped`（重试回滚不覆盖已恢复目标的后续新偏好；若所有目标均无待回滚改动则报 `FAILED`）；`latest_transaction_id()` 跳过无改动或已全部自动补偿的失败事务，避免阻断 `rollback --latest`。
   - Preview 与 Verify 不受进程运行阻断，保持严格只读。
-- **字段级 Rollback 与原子写**：
+- **快照路径绑定的子键级 / 字段级 Rollback 与原子写**：
   - 写入时使用同目录临时 `.mlsettings.tmp` + `os.replace` 原子替换。
-  - Rollback 仅还原 Snapshot 记录的受管键（恢复原值或删除原缺失键；若某个受管 `settings.json` 组原本不存在且还原后已无剩余键，同步移除该文件并恢复 `filesystemManifest.xml` 为原有目录/缺失状态），保留事务之后新增的无关设置。
+  - Rollback 以 Snapshot 记录的绝对 `settings_path` 为准（拒绝被符号链接/目录联接重定向后的快照路径，以及传入绑定到不同路径的同版本 Adapter 或元数据冲突，直接报 `failed` 拒绝写入），仅还原 Snapshot 记录的受管键与 `DesktopColors` / `SyntaxHighlightingColors` 内部受管子键（并兼容旧版不含 `kind`/`modes` 的快照升级为子键级还原），保留事务之后新增的无关设置与表内非受管颜色。
 - **Appearance policy 升级**：
-  - 在 `APPEARANCE_POLICY` 中记录 `matlab` 策略并升级 revision，旧 Plan 需重新 Preview，历史事务 Rollback 保持独立。
+  - 在 `APPEARANCE_POLICY` 中记录 `matlab` 主题与对比度保底策略并将 revision 升级至 `2026-11-22.v8`，旧 Plan（含 `v7`）需重新 Preview，历史事务 Rollback 保持独立。
 
 ## Testing Decisions
 

@@ -257,7 +257,11 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
         )
     chatgpt_app_path = os.environ.get("ONE_TONE_CHATGPT_APP_THEME_CONFIG")
     antigravity_instance = target_instances.get("antigravity") if target_instances is not None else None
-    matlab_instance = target_instances.get("matlab") if target_instances is not None else None
+    matlab_instance = (
+        target_instances.get("matlab", {"status": "skipped", "reason": "MATLAB target instance missing from Plan"})
+        if target_instances is not None
+        else None
+    )
     chrome_preferences = _configured_or_first(
         "ONE_TONE_CHROME_PREFERENCES",
         [localappdata / "Google/Chrome/User Data/Default/Preferences"],

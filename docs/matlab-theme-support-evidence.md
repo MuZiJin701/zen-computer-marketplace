@@ -1,6 +1,6 @@
-# Windows MATLAB 桌面主题支持评估
+# Windows MATLAB 桌面主题支持评估与验证记录
 
-2026-11-22 核查。**MATLAB 支持给内置浅色、深色主题自定义配色，值得列为候选，但现有证据不足以纳入 One-Tone 的自动支持范围。** 当前 Target 矩阵未列入 MATLAB，显式传入 `matlab` 走未知 Target 的 `skipped` 路径。只读检查通过 `HKLM` 下的 MathWorks `MATLABROOT`、实际 `matlab.exe` 和 `VersionInfo.xml` 确认当前机器安装了 R2026a（26.1），并发现对应的 Roaming 设置目录。PATH 和默认 Program Files 路径未定位到该安装。本次未启动 MATLAB，也未修改配置或验收实际渲染。 [Target 矩阵](../plugin/skills/zen-one-tone-windows/references/targets.md) · [CLI 注册逻辑](../plugin/skills/zen-one-tone-windows/src/one_tone/cli.py#L264) · [未知 Target 处理](../plugin/skills/zen-one-tone-windows/src/one_tone/adapters/base.py#L43)
+2026-11-22 核查与隔离实测更新。**Windows MATLAB（`>= R2025a` Web 桌面，实测基线 `R2026a` / `26.1`）已通过隔离 `MATLAB_PREFDIR` 实测并按 [ADR 0016](adr/0016-matlab-desktop-mlsettings-target.md) 纳入 One-Tone 默认 Target 矩阵（`matlab`，校验结果固定为 `partial`）。** 初始纯文档排查阶段因缺乏 `.mlsettings` 离线读写实证曾暂列为候选；后续在隔离临时 `MATLAB_PREFDIR` 目录下完成了 R2026a 原生序列化抓包、Python 离线原子改写后 `matlab -batch` 零警告回读验证、快照还原验证及运行态并发覆写实验，确认了离线原子改写 + fail-closed `Live-process write guard` + 子键级 Rollback 的安全边界。真实 GUI 桌面渲染对比度仍保持 `rendering_verification = untested`，Toolstrip/Header/侧边栏等安装包内置 Chrome 保持 `unsupported`。 [Target 矩阵](../plugin/skills/zen-one-tone-windows/references/targets.md) · [ADR 0016](adr/0016-matlab-desktop-mlsettings-target.md) · [开发规格](specs/2026-11-22-matlab-desktop-theme-target.md) · [MATLAB Adapter](../plugin/skills/zen-one-tone-windows/src/one_tone/adapters/matlab.py)
 
 ## 自定义范围
 
@@ -15,6 +15,10 @@
 - **字段级快照。** 对有公开读写接口的字段，`PersonalValue` 持久化，`TemporaryValue` 只存在于当前会话且优先于 `PersonalValue`。Snapshot 应按字段记录 `hasPersonalValue` 及原值，Rollback 在原值存在时写回，原先缺失时用 `clearPersonalValue` 清除本次写入的覆盖。仅比较 `ActiveValue` 无法验证持久化，也无法精确还原。GUI 修改还会清除对应的 `TemporaryValue`，需要纳入任何自动导入路径的实测。 [Settings 取值规则](https://www.mathworks.com/help/matlab/matlab_external/access-and-modify-settings.html) · [`hasPersonalValue`](https://www.mathworks.com/help/matlab/ref/matlab.settings.setting.haspersonalvalue.html) · [`clearPersonalValue`](https://www.mathworks.com/help/matlab/ref/matlab.settings.setting.clearpersonalvalue.html)
 - **图形副作用。** `theme(...)` 和 `Figure.Theme` 控制图窗。默认的 Figure Theme 跟随桌面主题，因此切换 Desktop Theme 可能改动现有图窗、绘图和 App 的默认配色，触发 `ThemeChangedFcn`。显式指定图窗主题可独立于桌面，显式指定的对象颜色也不会随主题重算。候选原型应保留 Desktop Theme 选择、Figure Theme 与绘图设置，并验证 Apply 未引起图窗换色。 [图形与 App 主题](https://www.mathworks.com/help/matlab/creating_plots/graphics-and-app-themes.html) · [`theme`](https://www.mathworks.com/help/matlab/ref/theme.html) · [`Figure` 回调](https://www.mathworks.com/help/matlab/ref/matlab.ui.figure.html)
 
-## 重新评估条件
+## 隔离实测结果与当前验收边界
 
-如需推进，先用独立的 Windows 测试用户验证明确选择的 R2026a 实例，仅覆盖有证据的桌面颜色。固定 Release、实际设置目录、字段及受管背景的证据，验证 Light/Dark 分别持久化且保留 `System`。在确认 Preview 和 Verify 无写入、部分失败可补偿、Rollback 可恢复原值和缺失状态之前，自动支持证据不足。配置匹配后另做实际界面的正文 `7:1`、功能文字 `4.5:1` 验收。 [One-Tone 架构](architecture.md) · [验证约定](testing.md) · [外观证据要求](adr/0010-evidence-backed-appearance-policy.md)
+在独立临时 `MATLAB_PREFDIR`（不触碰用户真实 `%APPDATA%\MathWorks\MATLAB\R2026a`）下对 R2026a（`26.1.0.3203278`）实测确认：
+
+- **离线读写与回读**：向 `matlab.mlsettings`（OPC ZIP）原子写入 `appearance/settings.json`、`colors/settings.json`（含双 Mode `DesktopColors` / `SyntaxHighlightingColors` 与 Light RGB 单键）、`commandwindow` / `programmingtools` / `editor/displaysettings` / `linelimit` 并同步更新 `metadata/filesystemManifest.xml` 后，经 `matlab -batch` 只读查询返回 `rc=0` 且零警告，所有受管项 `hasPersonalValue=1`、原无关项与 `GraphicsTheme` 完好保留；回滚后精确恢复 `hasPersonalValue=0`。
+- **运行态覆盖风险**：`MATLAB.exe` 运行期间不会热加载外部修改，且退出前若写入任意无关设置会用内存设置树整包覆写磁盘；因此实现强制要求 fail-closed `Live-process write guard`（入口与 `os.replace` 前二次复查）。
+- **尚未完成的验收项**：真实 GUI 桌面窗口渲染对比度验收仍未执行（`rendering_verification = untested`）；后续扩展其他 Release 或完成 GUI 视觉验收后继续补充本记录。 [One-Tone 架构](architecture.md) · [验证约定](testing.md) · [外观证据要求](adr/0010-evidence-backed-appearance-policy.md)
