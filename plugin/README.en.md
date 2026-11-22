@@ -2,7 +2,7 @@
 
 [简体中文](README.md)
 
-Distributes the self-contained `zen-one-tone-windows` Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows desktop, wallpaper, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity, and Chrome around a single Seed Color. Cursor is not supported as a theme target.
+Distributes the self-contained `zen-one-tone-windows` Skill for Windows 10 22H2+ and Windows 11 22H2+: unify Windows desktop, wallpaper, Windows Terminal, VS Code, TRAE, Antigravity IDE, ChatGPT App, Antigravity, MATLAB (`>= R2025a`), and Chrome around a single Seed Color. Cursor is not supported as a theme target.
 
 ## Install and use
 

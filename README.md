@@ -4,7 +4,7 @@
 
 用一个主色（Seed Color）统一你的 Windows 桌面、壁纸和常用软件外观，目前包含唯一插件 `zen-one-tone-windows`。
 
-- **支持应用**：Windows 桌面与壁纸、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity、Chrome。
+- **支持应用**：Windows 桌面与壁纸、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity、MATLAB（`>= R2025a`）、Chrome。
 - **支持系统**：Windows 10 22H2+（build `>= 19045`）和 Windows 11 22H2+（build `>= 22621`）；Cursor 暂不在主题支持列表中。
 
 ## 1. 安装与更新
@@ -69,7 +69,8 @@ skills remove zen-one-tone-windows
 
 - **Windows 强调色与壁纸**：应用后会同步逐屏壁纸并关闭系统透明效果，并自动采用 Windows 原生自定义模式（系统外壳深色 + 保持你的应用浅/深模式）以稳定显示任务栏主题色，壁纸跟随你的应用深浅模式，回滚时原样恢复；如果开启了“自动从背景中选取强调色”，系统可能会覆盖固定主色，建议先关闭该开关。
 - **Chrome 主题手动加载**：工具会在输出目录生成区分 Light/Dark 名称的两套未打包扩展目录，请打开 Chrome 的 `chrome://extensions`（开启右上角“开发者模式”），点击“加载已解压的扩展程序”选择想要的模式目录。
-- **明暗模式与终端**：Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App 和 Antigravity 均默认跟随系统应用浅/深色模式自动切换；若安装了 PowerShell 7（`pwsh`），终端启动时还会自动适配对应深浅模式的预测与语法色。
+- **明暗模式与终端**：Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 和 MATLAB（`>= R2025a`）均默认跟随系统应用浅/深色模式自动切换；若安装了 PowerShell 7（`pwsh`），终端启动时还会自动适配对应深浅模式的预测与语法色。
+- **MATLAB 同步注意**：MATLAB 仅统一内容区、编辑器与语法配色（不修改安装包内置工具条外框，结果标为 `partial`），保留绘图主题（`GraphicsTheme`）与开关；同步或回滚前请先关闭 MATLAB，避免退出时内存配置覆盖磁盘改动。
 - **保留个人设置**：不会改动你的字体或无关偏好；旧版应用不支持的字段会保持原样并标记为 `partial`。
 
 ## 仓库结构与本地开发

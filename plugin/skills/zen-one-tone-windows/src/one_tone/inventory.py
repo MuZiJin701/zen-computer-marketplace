@@ -39,6 +39,56 @@ FIELD_INVENTORY: dict[str, tuple[str, ...]] = {
     ),
     "chrome": (*CHROME_COLOR_ROLES, *(f"tints.{field}" for field in CHROME_TINT_ROLES),
                "properties.ntp_background_alignment", "properties.ntp_background_repeat", "properties.ntp_logo_alternate"),
+    "matlab": (
+        "matlab.appearance.MATLABTheme",
+        *(
+            f"matlab.colors.DesktopColors.{mode}.{key}"
+            for mode in ("light", "dark")
+            for key in ("BackgroundColor", "ForegroundColor")
+        ),
+        *(
+            f"matlab.colors.SyntaxHighlightingColors.{mode}.{key}"
+            for mode in ("light", "dark")
+            for key in (
+                "CodeColor",
+                "NormalColor",
+                "KeywordColor",
+                "CommentColor",
+                "StringColor",
+                "UnterminatedStringColor",
+                "SystemCommandColor",
+                "ValidationSectionColor",
+                "SyntaxErrorColor",
+                "ErrorColor",
+                "WarningColor",
+                "HyperlinkColor",
+                "CodeAnalyzerWarningColor",
+                "CodeAnalyzerInfoColor",
+                "AutofixHighlightColor",
+                "VariableHighlightColor",
+                "VariablesWithSharedScopeColor",
+                "HighlightCurrentLineColor",
+                "LineColor",
+            )
+        ),
+        "matlab.colors.KeywordColor",
+        "matlab.colors.CommentColor",
+        "matlab.colors.StringColor",
+        "matlab.colors.UnterminatedStringColor",
+        "matlab.colors.SystemCommandColor",
+        "matlab.colors.ValidationSectionColor",
+        "matlab.colors.SyntaxErrorColor",
+        "matlab.colors.commandwindow.ErrorColor",
+        "matlab.colors.commandwindow.WarningColor",
+        "matlab.colors.commandwindow.HyperlinkColor",
+        "matlab.colors.programmingtools.CodeAnalyzerWarningColor",
+        "matlab.colors.programmingtools.CodeAnalyzerInfoColor",
+        "matlab.colors.programmingtools.AutofixHighlightColor",
+        "matlab.colors.programmingtools.VariableHighlightColor",
+        "matlab.colors.programmingtools.VariablesWithSharedScopeColor",
+        "matlab.editor.displaysettings.HighlightCurrentLineColor",
+        "matlab.editor.displaysettings.linelimit.LineColor",
+    ),
 }
 
 for _target in ("terminal", "vscode", "trae", "antigravity-ide"):
@@ -56,6 +106,7 @@ PRESERVED_FIELDS = {
     "chrome": ("content.fonts", "window.opacity"),
     "chatgpt-app": ("ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio"),
     "antigravity": ("userSettings.unrelated",),
+    "matlab": ("matlab.appearance.figure.GraphicsTheme", "matlab.fonts", "matlab.editor.toggles", "desktop.chrome"),
 }
 PRESERVED_FIELDS["trae"] = (*PRESERVED_FIELDS["vscode"], "private.aiPanel.colors")
 PRESERVED_FIELDS["antigravity-ide"] = (*PRESERVED_FIELDS["vscode"], "private.aiPanel.colors")
@@ -73,6 +124,7 @@ _SOURCES = {
     "chatgpt-app": "verified-v1-runtime-schema",
     "antigravity": "verified-antigravity-config-v1",
     "chrome": "https://github.com/chromium/chromium/blob/77270bd36581caca2ab02fe4526cc921560ad089/chrome/browser/themes/browser_theme_pack.cc",
+    "matlab": "verified-matlab-mlsettings-v1",
 }
 _BASELINES = {
     "windows": "Windows 10 22H2 / Windows 11 22H2",
@@ -83,6 +135,7 @@ _BASELINES = {
     "chatgpt-app": "verified ChatGPT App v1 color schema",
     "antigravity": "verified Antigravity 2.0 config.json and app_storage.json schema",
     "chrome": "Chrome Manifest V3 theme schema",
+    "matlab": "MATLAB >= R2025a Web desktop (verified on R2026a matlab.mlsettings)",
 }
 _INVENTORY_VERSION = "2026-10-05.v4"
 
@@ -95,6 +148,7 @@ _REFERENCE_THEMES = {
     "chatgpt-app": "ChatGPT App verified v1 Light theme table",
     "antigravity": "Antigravity 2.0 customThemeSeedsLight / customThemeSeedsDark",
     "chrome": "Chrome Manifest V3 Light theme",
+    "matlab": "MATLAB R2026a built-in Light and Dark desktop color palettes",
 }
 _EVIDENCE_SOURCES = {
     "windows": "verified registry mechanism; high contrast uses official SPI_GETHIGHCONTRAST",
@@ -105,6 +159,7 @@ _EVIDENCE_SOURCES = {
     "chatgpt-app": "verified ChatGPT App runtime schema",
     "antigravity": "verified Antigravity runtime config and storage schema",
     "chrome": "official schema",
+    "matlab": "verified MATLAB R2026a mlsettings runtime schema and MathWorks matlab.colors docs",
 }
 _LIST_SELECTION_FIELDS = frozenset({
     "list.activeselectionbackground",
@@ -178,6 +233,12 @@ def _field_region(target: str, name: str) -> str:
         return "ChatGPT App"
     if target == "antigravity":
         return "Antigravity"
+    if target == "matlab":
+        if name == "desktop.chrome":
+            return "MATLAB desktop chrome"
+        if "desktopcolors" in lowered or "appearance" in lowered or name == "matlab.fonts":
+            return "MATLAB desktop"
+        return "MATLAB syntax & tools"
     return target
 
 
@@ -226,7 +287,7 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
         mapping = mappings.get(name)
         preserved = name in PRESERVED_FIELDS.get(target, ())
         capability = (
-            "unsupported" if name in {"window.opacity", "ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio", "private.aiPanel.colors"}
+            "unsupported" if name in {"window.opacity", "ui.fontSize", "ui.translucentSidebar", "embedded_terminal.ansi", "embedded_terminal.minimumContrastRatio", "private.aiPanel.colors", "desktop.chrome"}
             else "not-applicable" if preserved or name in {"properties.ntp_background_alignment", "properties.ntp_background_repeat"}
             else color_statuses.get(name, "unsupported") if target in {"vscode", "trae", "antigravity-ide"}
             else "supported"
@@ -239,7 +300,7 @@ def field_inventory_for(target: str) -> tuple[dict[str, str], ...]:
                 "field_category": (
                     "theme_structure" if name.endswith(".fonts")
                     else "font" if "font" in name.casefold()
-                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "SystemUsesLightTheme", "appearanceTheme", "userSettings.themeMode"} or name.endswith(".accentSource") or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
+                    else "display_property" if preserved or name in TERMINAL_APPEARANCE_FIELDS or name in {"EnableTransparency", "SystemUsesLightTheme", "appearanceTheme", "userSettings.themeMode", "matlab.appearance.MATLABTheme"} or name.endswith(".accentSource") or any(token in name.casefold() for token in ("properties.", "display", "prevalence", "contrast", "opaquewindows", "adjustindistinguishablecolors"))
                     else "color"
                 ),
                 "visual_role": mapping.visual_role if mapping else _field_role(name),

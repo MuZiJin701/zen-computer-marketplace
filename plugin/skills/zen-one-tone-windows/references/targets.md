@@ -9,9 +9,10 @@
 | `antigravity-ide` | 与 VS Code/TRAE 共享同一 Workbench 公开清单与 VSIX 双主题扩展（支持 JSONC） | 优先使用 `%APPDATA%\Antigravity IDE\User\settings.json` 与 `~/.antigravity-ide/extensions`，不改动 Scoop 目录结构，镜像同步已有便携 `data/` 目录；私有 AI 面板 unsupported |
 | `chatgpt-app` | 已验证 config.toml v1 两个 Light/Dark 主题表及 appearanceTheme | appearanceTheme=system，accentSource=custom、contrast=100、opaqueWindows=true；完整 semanticColors（支持替换内联表）；支持在有效 `config.toml` 上安全初始化缺失主题表与补齐缺失 fonts table，不发明字体值；未知布局安全 skipped。UI 字号、sidebar 透明度和内嵌终端无已验证入口，unsupported；手动重启 |
 | `antigravity` | Antigravity 2.0 桌面端 `~/.gemini/config/config.json` 与 `%APPDATA%\Antigravity\app_storage.json` | 写入 `userSettings.themeMode=THEME_MODE_INHERIT`、`customThemeSeedsLight` / `customThemeSeedsDark`（5 项种子键）及按当前 Windows 应用模式（`AppsUseLightTheme`）匹配的 `hubSurfaceBackgroundColor`，保留无关配置键；Snapshot/Verify/Rollback 完整覆盖两个文件 |
+| `matlab` | MATLAB `>= R2025a` Web 桌面端（实测基线 `R2026a`），经 `matlab.mlsettings`（OPC ZIP）覆盖双模式 `DesktopColors` / `SyntaxHighlightingColors`（含 `HighlightCurrentLineColor` 与 `LineColor`）及 Light 单键 RGB 同步 | 写入 `matlab.appearance.MATLABTheme=System`，保留 `GraphicsTheme`、字体、功能开关与无关偏好；Toolstrip/Header/侧边栏等安装包 Chrome 标 `unsupported`（校验固定报 `partial`，`rendering_verification=untested`）。运行中 `MATLAB.exe` 受 `Live-process write guard` 阻断（Apply 跳过、Rollback 报错）；Rollback 按字段级精准还原，保留事务后新增的无关设置。旧版 `<= R2024b` 或未初始化安全 `skipped` |
 | `chrome` | 两个 canonical unpacked Light/Dark Manifest V3 主题（名称区分 Light/Dark），24 colors、6 tints（Chromium `0.5` 中性基准）和适用 properties | ZIP 为内部产物，用户在 chrome://extensions 手动加载并确认。没有 NTP 图片时省略 alignment/repeat；只写 ntp_logo_alternate。不支持 theme 字体/全窗口透明度，内容字体保持原值 |
 
-默认全部八个目标；显式 cursor 安全 skipped，不访问 Cursor 文件。Seed Color 必须显式输入；示例为 `#22C55E`，没有默认 Seed。
+默认全部九个目标；显式 cursor 安全 skipped，不访问 Cursor 文件。Seed Color 必须显式输入；示例为 `#22C55E`，没有默认 Seed。
 
 ## 字段和版本证据
 
@@ -44,6 +45,6 @@ Preview 只保存 Plan；字段能力、两套 Palette、实例和 Appearance po
 
 Verify 只读，校验两套完整主题、注册贡献路径/类型/标签、settings、Chrome unpacked/ZIP、完整 TOML 和受管 Windows/Terminal 配置。不创建事务、不 Snapshot、不 Apply、不重启或回滚。Rollback 仅接受准确 transaction ID，恢复该事务的快照或工具产物并验证，包含原先缺失的字段。
 
-Target、Plan ID、Transaction ID 必须是安全路径组件。ONE_TONE_<TARGET>_EXECUTABLE/SETTINGS/EXTENSIONS 可明确覆盖编辑器实例；Preview 解析普通/portable/启动器实例并冻结 Workbench 基线，Apply/Verify 不重新猜路径。运行时不要求 Everything、仓库根目录、开发机绝对路径或固定盘符。
+Target、Plan ID、Transaction ID 必须是安全路径组件。ONE_TONE_<TARGET>_EXECUTABLE/SETTINGS/EXTENSIONS（以及 MATLAB 的 `ONE_TONE_MATLAB_SETTINGS` / `MATLAB_PREFDIR`）可明确覆盖实例；Preview 解析普通/portable/启动器实例并冻结基线，Apply/Verify 不重新猜路径。运行时不要求 Everything、仓库根目录、开发机绝对路径或固定盘符。
 
 配置 verified 与 rendering acceptance 分开。真实桌面/私有 AI/内嵌 xterm/应用自带背景/dim/reverse/ANSI256/RGB/真实 SSH 尚未验收；报告 rendering_verification=untested。诊断入口 `python .\scripts\terminal_readability_sample.py` 只输出代表性 ANSI 样例；可以经 stdin 送入已授权 SSH，不写远端配置。内嵌终端完整 ANSI/minimumContrastRatio 无已验证用户入口，不修改 App bundle。

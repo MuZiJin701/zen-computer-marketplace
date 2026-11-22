@@ -177,7 +177,7 @@ _Avoid_: 让壁纸跟随外壳深色导致浅色应用配深色壁纸、后台�
 安装和调用 One-Tone Skill 的 Agent 客户端。宿主支持描述的是分发与调用能力，Target 描述的是可统一主题的应用或系统。
 
 **Target**  
-一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT desktop app、Antigravity desktop app 或 Chrome。
+一个独立的主题集成：Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT desktop app、Antigravity desktop app、MATLAB desktop app 或 Chrome。
 _Avoid_: 应用（当 Windows 系统也在讨论范围内时）
 
 **ChatGPT desktop app**
@@ -191,6 +191,14 @@ _Avoid_: Antigravity IDE、浏览器插件
 **Antigravity IDE**
 基于 VS Code Workbench 的 Antigravity IDE 桌面编辑器（Target 标识符 `antigravity-ide`），与 VS Code、TRAE 共享同一套 VS Code 家族扩展主题与 `settings.json` 受管机制。
 _Avoid_: Antigravity 2.0 桌面客户端
+
+**MATLAB desktop app**
+R2025a 及以上采用新 Web 桌面架构的 Windows MATLAB 客户端（Target 标识符 `matlab`），通过用户设置包 `matlab.mlsettings` 管理浅色/深色双模式内容区与语法配色及系统主题跟随；工具条、标题区和侧边栏等窗口 Chrome 属于不可修改的安装包内置样式（`unsupported`），图窗主题（`GraphicsTheme`）保持用户原值。
+_Avoid_: MATLAB 旧版 Java 桌面（<= R2024b）、MATLAB 绘图主题、修改安装包 themes.json
+
+**Live-process write guard**
+对在退出时会用内存配置树覆盖磁盘文件的 Target（如 MATLAB desktop app），在 Apply 与 Rollback 前检查目标进程是否运行并拒绝盲写的安全边界；它不强行终止用户进程，也不把被守卫阻断的状态伪报为成功。
+_Avoid_: 强制结束进程、静默覆写、后台监听同步
 
 **Standard editor configuration priority**
 对于 VS Code、TRAE 和 Antigravity IDE，工具优先解析并使用 C 盘标准配置目录（`%APPDATA%\<Editor>\User\settings.json` 与 `~/.<editor>/extensions`）作为主目标实例；若同一可执行文件旁已存在 Scoop 便携版 `data/` 目录或启动器目录，工具同步镜像写入、快照、校验和回滚该目录，避免因启动入口不同而漏加载主题，同时不修改或破坏 Scoop 目录结构。
@@ -252,7 +260,7 @@ _Avoid_: 强制切换应用深浅、运行模式
 
 **Mode coherence**
 
-同一 Seed Color 的 Light 与 Dark 变体共享色相、区域层级和主题身份，浅色模式保持通透干净的明亮表面，深色模式保持深邃沉稳的暗色表面。支持双模式的 Target（Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App 和 Antigravity 桌面端）默认自动跟随 Windows 应用模式（`AppsUseLightTheme`）切换 Light/Dark。
+同一 Seed Color 的 Light 与 Dark 变体共享色相、区域层级和主题身份，浅色模式保持通透干净的明亮表面，深色模式保持深邃沉稳的暗色表面。支持双模式的 Target（Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 桌面端和 MATLAB 桌面端）默认自动跟随 Windows 应用模式（`AppsUseLightTheme`）切换 Light/Dark。
 _Avoid_: 压暗浅色表面以迁就窄跨度、把 Terminal 默认锁定为单一深色
 
 ### Workflow language
@@ -307,4 +315,5 @@ _Avoid_: 大致成功
 - Field inventory 定义应核查的 Appearance field，其中 Color field 是颜色与色调子集。
 - Plan 保存一次 Preview 的 Target 和 Mode 预期。
 - Preview 为需要配置实例发现的 Target 解析唯一 Active Target instance（并对编辑器优先使用 C 盘标准配置目录，同时记录已存在的便携镜像目标）；Apply 与 Verify 不重新猜测路径。
+- `MATLAB desktop app` 的 Apply 与 Rollback 受 `Live-process write guard` 约束，并在 Rollback 时按字段级精准还原受管设置，保留事务之后新增的无关偏好；Preview 与 Verify 保持严格只读。
 - Transaction 记录一次 Apply 及其后续 Verify 或 Rollback。

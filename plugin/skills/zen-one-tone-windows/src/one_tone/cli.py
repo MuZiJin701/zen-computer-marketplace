@@ -13,6 +13,7 @@ from .adapters import (
     AntigravityAdapter,
     ChromeAdapter,
     CodexAdapter,
+    MatlabAdapter,
     TerminalAdapter,
     UnsupportedAdapter,
     VSCodeFamilyAdapter,
@@ -21,6 +22,7 @@ from .adapters import (
 )
 from .editor_instance import EditorSpec, editor_spec_from_plan, resolve_editor_spec
 from .adapters.antigravity import _generated_values as _antigravity_generated_values, detect_windows_app_mode
+from .adapters.matlab import _generated_values as _matlab_generated_values
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
 from .adapters.chrome import _manifest
 from .adapters.codex import _theme_updates
@@ -32,7 +34,7 @@ from .plan import Plan, PlanIntegrityError, create_plan, load_plan, save_plan
 from .storage import json_safe
 from .transaction import TransactionStatus, TransactionStore, apply_plan, verify_plan
 
-DEFAULT_TARGETS = ("windows", "terminal", "vscode", "trae", "antigravity-ide", "chatgpt-app", "antigravity", "chrome")
+DEFAULT_TARGETS = ("windows", "terminal", "vscode", "trae", "antigravity-ide", "chatgpt-app", "antigravity", "matlab", "chrome")
 
 
 def _default_runtime_dir() -> Path:
@@ -255,6 +257,7 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
         )
     chatgpt_app_path = os.environ.get("ONE_TONE_CHATGPT_APP_THEME_CONFIG")
     antigravity_instance = target_instances.get("antigravity") if target_instances is not None else None
+    matlab_instance = target_instances.get("matlab") if target_instances is not None else None
     chrome_preferences = _configured_or_first(
         "ONE_TONE_CHROME_PREFERENCES",
         [localappdata / "Google/Chrome/User Data/Default/Preferences"],
@@ -286,6 +289,11 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
                 target_instance=antigravity_instance,
                 detect_system_mode=target_instances is None,
             )
+        elif target == "matlab":
+            registry[target] = MatlabAdapter(
+                target_instance=matlab_instance,
+                appdata=appdata,
+            )
         elif target == "chrome":
             registry[target] = ChromeAdapter(state_dir / "chrome-themes", chrome_preferences if chrome_preferences.is_file() else None)
         else:
@@ -307,6 +315,8 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
             generated["appearanceTheme"] = "system"
         elif target == "antigravity":
             generated = _antigravity_generated_values(plan)
+        elif target == "matlab":
+            generated = _matlab_generated_values(plan)
         elif target == "terminal":
             generated = {mapping.field: palette[mapping.palette_key] for mapping in TERMINAL_FIELD_MAPPINGS}
             generated.update({name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items() if value is not None})

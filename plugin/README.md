@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-提供可独立分发的 `zen-one-tone-windows` Skill，用一个主色（Seed Color）统一 Windows 桌面、壁纸、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 和 Chrome 本地主题。Cursor 暂不属于支持目标。
+提供可独立分发的 `zen-one-tone-windows` Skill，用一个主色（Seed Color）统一 Windows 桌面、壁纸、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity、MATLAB（`>= R2025a`）和 Chrome 本地主题。Cursor 暂不属于支持目标。
 
 ## 安装与使用
 

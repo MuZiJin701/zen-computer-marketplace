@@ -24,3 +24,5 @@ The accepted decisions about field coverage, the canonical Plan Palette set, use
 [ADR 0014](0014-windows-desktop-wallpaper-mode-matching-and-palette-refinement.md) records `IDesktopWallpaper` multi-monitor sync/verification, effective Windows mode matching without a daemon, OKLCH palette hierarchy/ANSI refinement, and the Terminal Light theme fix.
 
 [ADR 0015](0015-windows-custom-mode-taskbar-zen-palette-and-adaptive-terminal.md) records Windows Custom Mode (`SystemUsesLightTheme = 0`, preserving `AppsUseLightTheme`) for native taskbar accent display, app-mode wallpaper matching, real 8-slot RGB0 `AccentPalette` with `>= 3:1` icon contrast, Zen palette layering/border refinement, system-following Windows Terminal with adaptive PSReadLine syntax colors, and cross-target reliability fixes.
+
+[ADR 0016](0016-matlab-desktop-mlsettings-target.md) records adding the Windows MATLAB desktop (`matlab`, `>= R2025a`, baselined on `R2026a`) Target via offline atomic `matlab.mlsettings` updates, `Live-process write guard`, field-level Rollback, honest `partial` reporting (no installation bundle modification), and preserving `GraphicsTheme` and feature toggles.

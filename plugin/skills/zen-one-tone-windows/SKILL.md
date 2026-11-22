@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # 统一 Windows 主题
 
-默认处理全部已实现目标：`windows`、`terminal`、`vscode`、`trae`、`antigravity-ide`、`chatgpt-app`、`antigravity`、`chrome`。只有用户明确指定目标时才缩小范围；不要把“统一电脑主题”解释成只处理当前提到的一个应用。Cursor 暂不属于用户可见支持目标，显式指定时安全返回 `skipped`。
+默认处理全部已实现目标：`windows`、`terminal`、`vscode`、`trae`、`antigravity-ide`、`chatgpt-app`、`antigravity`、`matlab`、`chrome`。只有用户明确指定目标时才缩小范围；不要把“统一电脑主题”解释成只处理当前提到的一个应用。Cursor 暂不属于用户可见支持目标，显式指定时安全返回 `skipped`。
 
 ## 交互与简化流程
 
@@ -59,8 +59,8 @@ Plan ID、Transaction ID 和 target 必须是安全路径组件。默认 `.one-t
 
 ## 已确认的主题字段开发范围
 
-当前运行时按已确认开发说明覆盖 Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity 和 Chrome 的公开主题颜色字段，并支持浅色/深色 Mode、Field inventory、字段级 capability status 和相邻 UI region 可区分性。普通相邻背景目标为 1.2:1，选区/焦点/边框/强调控件目标为 3:1，Light Mode 的 Dense primary text 使用不透明、低色度 Neutral primary text 和 7:1，其他文字使用 4.5:1，深层背景文字使用 7:1。
+当前运行时按已确认开发说明覆盖 Windows、Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity、MATLAB（`>= R2025a` Web 桌面）和 Chrome 的主题颜色字段，并支持浅色/深色 Mode、Field inventory、字段级 capability status 和相邻 UI region 可区分性。普通相邻背景目标为 1.2:1，选区/焦点/边框/强调控件目标为 3:1，Light Mode 的 Dense primary text 使用不透明、低色度 Neutral primary text 和 7:1，其他文字使用 4.5:1，深层背景文字使用 7:1。
 
-同语义字段可以复用 Visual role；关键相邻 UI region 使用可区分的背景、边界和状态标记。Chrome 输出 Light/Dark 两个 canonical unpacked 目录和内部 ZIP；Windows Terminal 输出双 Scheme 并默认启用 `One Tone Dark`；Windows 分开报告 Accent color 与 Taskbar accent display，不改变系统模式、自动取色或高对比度设置；VS Code/TRAE/Antigravity IDE 使用扩展实际贡献的 Light/Dark 标签；ChatGPT App 与 Antigravity 以已验证运行时 schema 为边界；私有 AI 面板只处理可发现且可验证的字段。
+同语义字段可以复用 Visual role；关键相邻 UI region 使用可区分的背景、边界和状态标记。Chrome 输出 Light/Dark 两个 canonical unpacked 目录和内部 ZIP；Windows Terminal 输出双 Scheme 并按版本自动跟随系统应用模式；Windows 分开报告 Accent color 与 Taskbar accent display，不改变系统应用模式、自动取色或高对比度设置；VS Code/TRAE/Antigravity IDE 使用扩展实际贡献的 Light/Dark 标签；ChatGPT App、Antigravity 与 MATLAB 以已验证运行时 schema 为边界（MATLAB 不修改安装包 `themes.json`，窗口 Chrome 报 `unsupported`/`partial`，并启用 `Live-process write guard` 与字段级 Rollback）；私有 AI 面板只处理可发现且可验证的字段。
 
 完整决策见仓库 docs/specs 与 docs/adr 下的开发说明与架构决策记录；真实桌面字段仍需按测试说明单独验收。
