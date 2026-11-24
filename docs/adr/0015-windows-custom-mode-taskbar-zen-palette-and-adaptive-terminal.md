@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-11-19; revises [ADR 0004](0004-appearance-safe-palette.md), [ADR 0006](0006-mode-coherence-and-system-following.md), [ADR 0009](0009-portable-shell-integration-and-taskbar-mode-recovery.md), [ADR 0011](0011-single-plugin-antigravity-and-standard-editor-paths.md), and [ADR 0014](0014-windows-desktop-wallpaper-mode-matching-and-palette-refinement.md).
+Accepted — 2026-11-19; revises [ADR 0004](0004-appearance-safe-palette.md), [ADR 0006](0006-mode-coherence-and-system-following.md), [ADR 0009](0009-portable-shell-integration-and-taskbar-mode-recovery.md), [ADR 0011](0011-single-plugin-antigravity-and-standard-editor-paths.md), and [ADR 0014](0014-windows-desktop-wallpaper-mode-matching-and-palette-refinement.md); single-value surface mode matching revised by [ADR 0017](0017-mode-independent-single-value-surfaces.md).
 
 ## Context
 

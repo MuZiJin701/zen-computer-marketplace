@@ -185,3 +185,20 @@ def test_plan_rejects_incoherent_mode_palettes(tmp_path):
 
     with pytest.raises(PlanIntegrityError, match="incoherent"):
         load_plan("plan-incoherent-001", tmp_path)
+
+
+def test_old_v8_plan_is_rejected_for_v9_appearance_policy(tmp_path):
+    """Old v8 plans must be recreated through Preview after single-value surface policy bump."""
+    plan = create_plan("#22C55E", ["windows", "antigravity"], plan_id="plan-v8-001")
+    path = save_plan(plan, tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["appearance_policy"]["revision"] = "2026-11-22.v8"
+    payload["appearance_policy"].pop("windows.single_value_surfaces", None)
+    payload["appearance_policy"].pop("antigravity.hub_surface", None)
+    payload["appearance_policy"]["windows.wallpaper_mode_matching"] = "app_mode_with_idesktopwallpaper"
+    payload["appearance_policy"]["antigravity.hub_mode_matching"] = "app_mode"
+    payload["hash"] = compute_plan_hash(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PlanIntegrityError, match="appearance policy"):
+        load_plan("plan-v8-001", tmp_path)

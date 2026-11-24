@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ..inventory import inventory_groups, inventory_report
+from ..palette import mode_independent_surface
 from ..plan import Plan
 from ..storage import atomic_write_text
 from .base import AdapterResult, field_capabilities
@@ -69,20 +70,10 @@ def _seed_values(palette: Mapping[str, str]) -> dict[str, str]:
     }
 
 
-def _effective_hub_mode(plan: Plan, explicit_mode: str | None = None) -> str:
-    if explicit_mode in {"light", "dark"}:
-        return explicit_mode
-    instance_mode = plan.target_instances.get("antigravity", {}).get("app_mode")
-    if instance_mode in {"light", "dark"}:
-        return str(instance_mode)
-    return plan.mode
-
-
-def _generated_values(plan: Plan, hub_mode: str | None = None) -> dict[str, Any]:
-    effective_mode = _effective_hub_mode(plan, hub_mode)
+def _generated_values(plan: Plan) -> dict[str, Any]:
     values: dict[str, Any] = {
         "userSettings.themeMode": "THEME_MODE_INHERIT",
-        "hubSurfaceBackgroundColor": plan.palette_for(effective_mode)["surface"],
+        "hubSurfaceBackgroundColor": mode_independent_surface(plan.seed_color),
     }
     for table, mode in (("customThemeSeedsLight", "light"), ("customThemeSeedsDark", "dark")):
         for key, value in _seed_values(plan.palette_for(mode)).items():
@@ -130,21 +121,10 @@ class AntigravityAdapter:
         config_path: Path | None = None,
         storage_path: Path | None = None,
         target_instance: Mapping[str, Any] | None = None,
-        app_mode: str | None = None,
-        detect_system_mode: bool = False,
     ) -> None:
         instance = dict(target_instance or {})
         self.config_path = Path(str(instance["config_path"])) if instance.get("config_path") else (config_path or default_antigravity_config_path())
         self.storage_path = Path(str(instance["storage_path"])) if instance.get("storage_path") else (storage_path or default_antigravity_storage_path())
-        instance_mode = instance.get("app_mode")
-        if instance_mode in {"light", "dark"}:
-            self.app_mode: str | None = str(instance_mode)
-        elif app_mode in {"light", "dark"}:
-            self.app_mode = app_mode
-        elif detect_system_mode:
-            self.app_mode = detect_windows_app_mode()
-        else:
-            self.app_mode = None
 
     def _inspect(self) -> tuple[bool, dict[str, Any] | None, dict[str, Any] | None, str]:
         config_exists = self.config_path.is_file()
@@ -169,21 +149,18 @@ class AntigravityAdapter:
         ok, _, _, reason = self._inspect()
         if not ok:
             return {"status": "skipped", "reason": reason}
-        instance: dict[str, Any] = {
+        return {
             "status": "ok",
             "config_path": str(self.config_path),
             "storage_path": str(self.storage_path),
         }
-        if self.app_mode in {"light", "dark"}:
-            instance["app_mode"] = self.app_mode
-        return instance
 
     def _metadata(self, plan: Plan | None = None, status: str = "supported") -> dict[str, Any]:
         statuses = {
             name: status if capability == "supported" else capability
             for name, capability in field_capabilities(self.target).items()
         }
-        values = _generated_values(plan, self.app_mode) if plan else {}
+        values = _generated_values(plan) if plan else {}
         return {
             "field_capabilities": statuses,
             "generated_values": values,
@@ -249,8 +226,7 @@ class AntigravityAdapter:
             updated_config["userSettings"] = user_settings
 
             updated_storage = dict(storage_payload)
-            hub_mode = _effective_hub_mode(plan, self.app_mode)
-            updated_storage["hubSurfaceBackgroundColor"] = plan.palette_for(hub_mode)["surface"]
+            updated_storage["hubSurfaceBackgroundColor"] = mode_independent_surface(plan.seed_color)
 
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)
@@ -278,8 +254,7 @@ class AntigravityAdapter:
             seeds = user_settings.get(table) if isinstance(user_settings, dict) else None
             expected = _seed_values(plan.palette_for(mode))
             verified = verified and isinstance(seeds, dict) and all(seeds.get(key) == value for key, value in expected.items())
-        hub_mode = _effective_hub_mode(plan, self.app_mode)
-        verified = verified and storage_payload.get("hubSurfaceBackgroundColor") == plan.palette_for(hub_mode)["surface"]
+        verified = verified and storage_payload.get("hubSurfaceBackgroundColor") == mode_independent_surface(plan.seed_color)
         return AdapterResult(
             self.target,
             "ok" if verified else "failed",

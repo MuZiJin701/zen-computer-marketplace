@@ -15,11 +15,11 @@ from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 APPEARANCE_POLICY = {
-    "revision": "2026-11-22.v8",
+    "revision": "2026-11-24.v9",
     "windows.EnableTransparency": 0,
     "windows.taskbar_custom_mode": "shell_dark_preserve_app_mode",
-    "windows.wallpaper_mode_matching": "app_mode_with_idesktopwallpaper",
-    "antigravity.hub_mode_matching": "app_mode",
+    "windows.single_value_surfaces": "mode_independent_seed_derived_with_idesktopwallpaper",
+    "antigravity.hub_surface": "mode_independent_seed_derived",
     "terminal": "system-following paired themes and schemes; solid profiles and unfocused appearances; adaptive PSReadLine colors",
     "chatgpt-app.appearanceTheme": "system",
     "matlab.MATLABTheme": "System",

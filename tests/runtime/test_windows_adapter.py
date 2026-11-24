@@ -7,6 +7,7 @@ from one_tone.adapters.windows import (
     InMemoryRegistryBackend,
     WindowsAdapter,
     WindowsConfig,
+    _shell_accent,
     detect_windows_version,
     generate_wallpaper,
     generate_accent_palette,
@@ -14,7 +15,7 @@ from one_tone.adapters.windows import (
     windows_colorization_value,
 )
 import one_tone.adapters.windows as windows_module
-from one_tone.palette import contrast_ratio
+from one_tone.palette import contrast_ratio, mode_independent_inactive_titlebar, mode_independent_surface
 from one_tone.plan import create_plan
 
 
@@ -228,7 +229,7 @@ def test_windows_custom_mode_enables_native_taskbar_accent_and_restores_shell_mo
     result = adapter.apply(plan)
 
     assert result.status == "ok"
-    assert result.metadata["effective_mode"] == "light"
+    assert "effective_mode" not in result.metadata
     assert registry.values["AppsUseLightTheme"] == 1
     assert registry.values["SystemUsesLightTheme"] == 0
     assert registry.values["StartTaskbarColorPrevalence"] == 1
@@ -275,14 +276,16 @@ def test_windows_apply_keeps_white_shell_glyphs_legible(tmp_path):
     ]
 
     shell_accent = colors[3]
+    expected_backdrop = mode_independent_surface(plan.seed_color)
+    expected_inactive = mode_independent_inactive_titlebar(plan.seed_color, shell_accent=shell_accent)
     assert contrast_ratio(shell_accent, "#FFFFFF") >= 3.0
     assert contrast_ratio(colors[4], "#FFFFFF") >= 4.5
     assert registry.values["AccentColorMenu"] == windows_color_value(shell_accent)
     assert registry.values["StartColorMenu"] == windows_color_value(shell_accent)
     assert registry.values["AccentColor"] == windows_color_value(shell_accent)
-    assert registry.values["AccentColorInactive"] == windows_color_value(plan.palette_for("dark")["surface_subtle"])
+    assert registry.values["AccentColorInactive"] == windows_color_value(expected_inactive)
     assert registry.values["ColorizationColor"] == windows_colorization_value(shell_accent)
-    surface_rgb = bytes.fromhex(plan.palette_for("dark")["surface"][1:])
+    surface_rgb = bytes.fromhex(expected_backdrop[1:])
     assert registry.values["Background"] == f"{surface_rgb[0]} {surface_rgb[1]} {surface_rgb[2]}"
 
 
@@ -380,25 +383,42 @@ def test_windows_apply_persists_an_absolute_wallpaper_path(tmp_path, monkeypatch
     assert Path(desktop.wallpaper).is_absolute()
 
 
-def test_windows_effective_mode_follows_app_mode_under_custom_dark_shell(tmp_path):
+def test_windows_single_value_surfaces_are_mode_independent_across_app_mode_switches(tmp_path):
     light_registry = InMemoryRegistryBackend({"CurrentBuild": "26300", "AppsUseLightTheme": 1, "SystemUsesLightTheme": 1})
     light_desktop = InMemoryDesktopBackend(monitor_count=2)
     adapter = WindowsAdapter(WindowsConfig(tmp_path / "light"), light_registry, light_desktop)
-    plan = create_plan("#22C55E", ["windows"], plan_id="plan-windows-effective-light", mode="dark")
+    plan = create_plan("#22C55E", ["windows"], plan_id="plan-windows-mode-independent", mode="dark")
 
-    assert adapter.detect().metadata["effective_mode"] == "light"
+    assert "effective_mode" not in adapter.detect().metadata
     result = adapter.apply(plan)
     assert result.status == "ok"
-    assert result.metadata["effective_mode"] == "light"
+    assert "effective_mode" not in result.metadata
     assert light_registry.values["SystemUsesLightTheme"] == 0
     assert light_registry.values["AppsUseLightTheme"] == 1
-    expected_surface = plan.palette_for("light")["surface"]
+    expected_surface = mode_independent_surface(plan.seed_color)
+    expected_inactive = mode_independent_inactive_titlebar(plan.seed_color, shell_accent=_shell_accent(plan.seed_color))
     expected_rgb = " ".join(str(channel) for channel in bytes.fromhex(expected_surface[1:]))
     assert light_registry.values["Background"] == expected_rgb
+    assert light_registry.values["AccentColorInactive"] == windows_color_value(expected_inactive)
     assert light_desktop.background_color == expected_surface
     assert len(light_desktop.monitor_wallpapers) == 2
     assert all(Path(path).is_file() for path in light_desktop.monitor_wallpapers)
     assert adapter.verify(plan).verified is True
+
+    # Switching Windows App mode between Dark and Light without re-sync keeps verify passing.
+    light_registry.values["AppsUseLightTheme"] = 0
+    assert adapter.verify(plan).verified is True
+    light_registry.values["AppsUseLightTheme"] = 1
+    assert adapter.verify(plan).verified is True
+
+    # Applying under Dark App mode yields identical single-value outputs and wallpaper bytes.
+    dark_registry = InMemoryRegistryBackend({"CurrentBuild": "26300", "AppsUseLightTheme": 0, "SystemUsesLightTheme": 1})
+    dark_desktop = InMemoryDesktopBackend(monitor_count=2)
+    dark_adapter = WindowsAdapter(WindowsConfig(tmp_path / "dark"), dark_registry, dark_desktop)
+    assert dark_adapter.apply(plan).status == "ok"
+    assert Path(dark_desktop.wallpaper).read_bytes() == Path(light_desktop.wallpaper).read_bytes()
+    for key in ("Background", "AccentColorInactive", "AccentColor", "AccentPalette"):
+        assert dark_registry.values[key] == light_registry.values[key]
 
     # Simulate stale Explorer monitor state (black/empty wallpaper) -> verify must catch it
     light_desktop.monitor_wallpapers[1] = ""
@@ -443,7 +463,7 @@ def test_windows_rollback_restores_solid_black_empty_wallpaper_state(tmp_path):
 
     assert adapter.snapshot(tmp_path / "backup").status == "ok"
     assert adapter.apply(plan).changed is True
-    assert desktop.background_color == plan.palette_for("light")["surface"]
+    assert desktop.background_color == mode_independent_surface(plan.seed_color)
     assert adapter.rollback(tmp_path / "backup").verified is True
     assert desktop.monitor_wallpapers == ["", ""]
     assert desktop.background_color == "#000000"

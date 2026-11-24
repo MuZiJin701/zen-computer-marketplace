@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-11-19; extends [ADR 0004](0004-appearance-safe-palette.md), [ADR 0006](0006-mode-coherence-and-system-following.md), [ADR 0010](0010-evidence-backed-appearance-policy.md), and [ADR 0011](0011-single-plugin-antigravity-and-standard-editor-paths.md).
+Accepted — 2026-11-19; extends [ADR 0004](0004-appearance-safe-palette.md), [ADR 0006](0006-mode-coherence-and-system-following.md), [ADR 0010](0010-evidence-backed-appearance-policy.md), and [ADR 0011](0011-single-plugin-antigravity-and-standard-editor-paths.md); single-value surface mode matching revised by [ADR 0017](0017-mode-independent-single-value-surfaces.md).
 
 ## Context
 

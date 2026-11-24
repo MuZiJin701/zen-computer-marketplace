@@ -2,10 +2,15 @@ import colorsys
 
 import pytest
 
+from one_tone.adapters.windows import _shell_accent
 from one_tone.palette import (
+    MODE_ACCENT_HUE_TOLERANCE,
+    _oklab_delta_e,
     _oklch_components,
     contrast_ratio,
     generate_palette,
+    mode_independent_inactive_titlebar,
+    mode_independent_surface,
     parse_hex_color,
     relative_luminance,
     validate_mode_coherence,
@@ -251,3 +256,36 @@ def test_muted_foreground_light_accent_and_ansi_roles_are_distinct():
             assert contrast_ratio(palette[role], palette["surface"]) >= 4.5
     light = generate_palette("#22C55E", "light")
     assert _oklch_components(light["accent"])[1] >= 0.10
+
+
+def test_mode_independent_surfaces_preserve_hue_contrast_and_separation():
+    seeds = (
+        "#22C55E", "#39FF14", "#FACC15", "#EF4444", "#3B82F6",
+        "#7C3AED", "#005436", "#000000", "#FFFFFF", "#808080",
+    )
+    for seed in seeds:
+        backdrop = mode_independent_surface(seed)
+        shell_accent = _shell_accent(seed)
+        inactive = mode_independent_inactive_titlebar(seed, shell_accent=shell_accent)
+
+        assert backdrop not in {"#000000", "#FFFFFF"}
+        assert inactive not in {"#000000", "#FFFFFF"}
+        assert inactive != backdrop
+        assert contrast_ratio(backdrop, "#FFFFFF") >= 4.5
+        assert contrast_ratio(inactive, "#FFFFFF") >= 4.5
+
+        seed_chroma = _oklch_components(seed)[1]
+        backdrop_l, backdrop_c, _ = _oklch_components(backdrop)
+        inactive_l, inactive_c, _ = _oklch_components(inactive)
+        assert backdrop_c <= 0.045
+        assert inactive_c <= 0.045
+        if seed_chroma < 0.035:
+            assert backdrop_c <= 0.012
+            assert inactive_c <= 0.012
+        else:
+            assert _oklch_hue_distance(seed, backdrop) <= MODE_ACCENT_HUE_TOLERANCE
+            if inactive_c > 0.005:
+                assert _oklch_hue_distance(seed, inactive) <= MODE_ACCENT_HUE_TOLERANCE
+
+        assert abs(inactive_l - backdrop_l) >= 0.06
+        assert _oklab_delta_e(inactive, shell_accent) >= 0.06

@@ -4,6 +4,7 @@ from one_tone.adapters.antigravity import (
     ANTIGRAVITY_CONFIG_SCHEMA_V1,
     AntigravityAdapter,
 )
+from one_tone.palette import mode_independent_surface
 from one_tone.plan import create_plan
 
 
@@ -56,7 +57,7 @@ def test_antigravity_adapter_applies_verifies_and_restores_preserving_fields(tmp
         assert seeds["primaryForegroundOverride"] == palette["accent_foreground"]
         assert seeds["codeForegroundOverride"] == palette["accent_text"]
 
-    assert updated_storage["hubSurfaceBackgroundColor"] == plan.palette_for(plan.mode)["surface"]
+    assert updated_storage["hubSurfaceBackgroundColor"] == mode_independent_surface(plan.seed_color)
     assert updated_storage["windowBounds"] == {"width": 1200}
 
     assert adapter.verify(plan).verified is True
@@ -70,22 +71,29 @@ def test_antigravity_adapter_skips_when_both_files_missing(tmp_path):
     assert adapter.detect().status == "skipped"
 
 
-def test_antigravity_hub_surface_follows_detected_windows_app_mode(tmp_path):
+def test_antigravity_hub_surface_is_mode_independent(tmp_path):
     config_path = tmp_path / "config.json"
     storage_path = tmp_path / "app_storage.json"
     config_path.write_text(json.dumps({"userSettings": {}}), encoding="utf-8")
     storage_path.write_text(json.dumps({"hubSurfaceBackgroundColor": "#000000"}), encoding="utf-8")
 
-    adapter = AntigravityAdapter(config_path=config_path, storage_path=storage_path, app_mode="light")
-    plan = create_plan(
-        "#22C55E",
-        ["antigravity"],
-        plan_id="plan-antigravity-app-mode-001",
-        mode="dark",
-        target_instances={"antigravity": adapter.target_instance()},
-    )
-    assert plan.target_instances["antigravity"]["app_mode"] == "light"
-    assert adapter.apply(plan).status == "ok"
-    updated_storage = json.loads(storage_path.read_text(encoding="utf-8"))
-    assert updated_storage["hubSurfaceBackgroundColor"] == plan.palette_for("light")["surface"]
-    assert adapter.verify(plan).verified is True
+    adapter = AntigravityAdapter(config_path=config_path, storage_path=storage_path)
+    assert "app_mode" not in adapter.target_instance()
+
+    expected_hub = mode_independent_surface("#22C55E")
+    outputs = {}
+    for mode in ("light", "dark"):
+        plan = create_plan(
+            "#22C55E",
+            ["antigravity"],
+            plan_id=f"plan-antigravity-mode-independent-{mode}",
+            mode=mode,
+            target_instances={"antigravity": adapter.target_instance()},
+        )
+        assert adapter.apply(plan).status == "ok"
+        updated_storage = json.loads(storage_path.read_text(encoding="utf-8"))
+        outputs[mode] = updated_storage["hubSurfaceBackgroundColor"]
+        assert updated_storage["hubSurfaceBackgroundColor"] == expected_hub
+        assert adapter.verify(plan).verified is True
+
+    assert outputs["light"] == outputs["dark"] == expected_hub

@@ -584,6 +584,67 @@ def _generate_palette(seed_color: str, mode: str) -> dict[str, str]:
     return palette
 
 
+def mode_independent_surface(seed_color: str) -> str:
+    """Derive a mode-independent, low-chroma, mid-dark surface preserving Seed hue and white-icon contrast."""
+    seed = _to_hex(parse_hex_color(seed_color))
+    _seed_l, seed_chroma, hue = _oklch_components(seed)
+    chroma = (
+        min(0.042, max(0.016, seed_chroma * 0.22))
+        if seed_chroma >= 0.035
+        else min(0.012, seed_chroma * 0.5)
+    )
+    for step in range(44, 17, -1):
+        candidate = _oklch_color(hue, step / 100, chroma)
+        if candidate.upper() not in {"#000000", "#FFFFFF"} and contrast_ratio(candidate, "#FFFFFF") >= 4.5:
+            return candidate
+    return _oklch_color(hue, 0.28, chroma)
+
+
+def mode_independent_inactive_titlebar(seed_color: str, *, shell_accent: str | None = None) -> str:
+    """Derive a mode-independent inactive titlebar surface separated from both wallpaper and active titlebar."""
+    backdrop = mode_independent_surface(seed_color)
+    backdrop_l, backdrop_c, hue = _oklch_components(backdrop)
+    inactive_c = min(0.036, backdrop_c * 0.90)
+
+    def is_valid(candidate: str) -> bool:
+        if candidate.upper() in {"#000000", "#FFFFFF"} or candidate.upper() == backdrop.upper():
+            return False
+        if contrast_ratio(candidate, "#FFFFFF") < 4.5:
+            return False
+        cand_l = _oklch_components(candidate)[0]
+        if abs(cand_l - backdrop_l) < 0.06:
+            return False
+        if shell_accent is not None and _oklab_delta_e(candidate, shell_accent) < 0.06:
+            return False
+        return True
+
+    primary = _oklch_color(hue, max(0.28, backdrop_l - 0.08), inactive_c)
+    if is_valid(primary):
+        return primary
+
+    fallback_lightnesses = (
+        max(0.24, backdrop_l - 0.12),
+        min(0.54, backdrop_l + 0.08),
+        max(0.20, backdrop_l - 0.16),
+        min(0.56, backdrop_l + 0.11),
+    )
+    candidates = [_oklch_color(hue, target_l, inactive_c) for target_l in fallback_lightnesses]
+    valid = [candidate for candidate in candidates if is_valid(candidate)]
+    pool = valid or [
+        candidate for candidate in candidates
+        if candidate.upper() not in {"#000000", "#FFFFFF"} and candidate.upper() != backdrop.upper()
+    ]
+    if shell_accent is not None:
+        return max(
+            pool,
+            key=lambda candidate: (
+                _oklab_delta_e(candidate, shell_accent),
+                abs(_oklch_components(candidate)[0] - backdrop_l),
+            ),
+        )
+    return max(pool, key=lambda candidate: abs(_oklch_components(candidate)[0] - backdrop_l))
+
+
 def generate_palette(seed_color: str, mode: str | None = None) -> dict[str, str]:
     """Generate a mode palette; omitted mode preserves the v1 palette shape."""
     if mode is None:

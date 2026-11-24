@@ -50,7 +50,7 @@ Skill 不得依赖 Codex Plugin 元数据、仓库根目录、开发机绝对路
 - Plan ID、Transaction ID 和 target 必须是安全路径组件；未知 target 可安全 skipped，但不得创建越界路径。
 - Plan、事务和目标配置 JSON 使用同目录临时文件加原子替换，避免中断造成截断文件。
 - 事务快照默认保留最近 5 个已完成事务；只清理工具生成的数据。
-- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface、Antigravity `customThemeSeeds*` / `hubSurfaceBackgroundColor` 与 Windows 壁纸/底色/非活动标题栏均跟随当前 Windows 应用模式（`AppsUseLightTheme`，壁纸经 `IDesktopWallpaper` 逐屏设置、快照与校验）使用派生 Tonal surface。Windows 采用原生自定义模式（将 `SystemUsesLightTheme` 设为深色 `0` 并开启 `Personalize\ColorPrevalence = 1`，同时保持用户 `AppsUseLightTheme` 不变，Rollback 原样恢复并广播刷新），`AccentPalette` 按微软真实 8 槽 `RGB0`（`Light3..Base..Dark3, Extra`）写入，基础 Shell Accent 在 OKLCH 中保护固定白色图标 `3:1`；确认 Apply 关闭透明效果，保持应用模式、AutoColorization、高对比度和字体，不引入后台常驻服务。高对比度开启或 API 未知时安全跳过 Windows。
+- Seed Color 保留为 Theme anchor/Accent source；ChatGPT App surface 与 Antigravity `customThemeSeeds*` 跟随系统浅/深双模式使用派生 Tonal surface，而 Windows 壁纸/底色（经 `IDesktopWallpaper` 逐屏设置、快照与校验）、非活动标题栏（`AccentColorInactive`）与 Antigravity `hubSurfaceBackgroundColor` 均使用基于 Seed Color 直接派生的模式无关中深调表面（保护桌面白色图标 `>= 4.5:1`，`AccentColorInactive` 同色系错开一档并与活动标题栏区分），使切换 `AppsUseLightTheme` 后无需重跑 `sync`。Windows 采用原生自定义模式（将 `SystemUsesLightTheme` 设为深色 `0` 并开启 `Personalize\ColorPrevalence = 1`，同时保持用户 `AppsUseLightTheme` 不变，Rollback 原样恢复并广播刷新），`AccentPalette` 按微软真实 8 槽 `RGB0`（`Light3..Base..Dark3, Extra`）直接基于 Seed Color 写入，基础 Shell Accent 在 OKLCH 中保护固定白色图标 `3:1`；确认 Apply 关闭透明效果，保持应用模式、AutoColorization、高对比度和字体，不引入后台常驻服务。高对比度开启或 API 未知时安全跳过 Windows。
 - Cursor 暂不属于用户可见支持目标；显式输入 cursor 必须安全 skipped，不得访问或修改 Cursor 文件。
 
 ## 当前实现边界

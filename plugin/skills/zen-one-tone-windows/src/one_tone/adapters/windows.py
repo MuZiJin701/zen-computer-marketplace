@@ -13,7 +13,14 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from ..inventory import inventory_groups, inventory_report
-from ..palette import _oklch_color, _oklch_components, contrast_ratio, parse_hex_color
+from ..palette import (
+    _oklch_color,
+    _oklch_components,
+    contrast_ratio,
+    mode_independent_inactive_titlebar,
+    mode_independent_surface,
+    parse_hex_color,
+)
 from ..plan import Plan
 from ..storage import BYTES_MARKER, atomic_write_text, json_safe
 from .base import AdapterResult
@@ -593,11 +600,12 @@ def _png_chunk(kind: bytes, payload: bytes) -> bytes:
     return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
 
 
-def generate_wallpaper(palette: Mapping[str, str], path: Path, width: int = 1920, height: int = 1080) -> Path:
+def generate_wallpaper(surface: str | Mapping[str, str], path: Path, width: int = 1920, height: int = 1080) -> Path:
     if width < 1 or height < 1:
         raise ValueError("Wallpaper dimensions must be positive")
-    surface = bytes(parse_hex_color(palette["surface"]))
-    row = b"\x00" + surface * width
+    surface_hex = surface if isinstance(surface, str) else surface["surface"]
+    surface_rgb = bytes(parse_hex_color(surface_hex))
+    row = b"\x00" + surface_rgb * width
     rows = row * height
     raw = b"\x89PNG\r\n\x1a\n"
     raw += _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
@@ -660,21 +668,12 @@ def generate_accent_palette(accent: str) -> bytes:
     return b"".join(bytes((*parse_hex_color(color), 0)) for color in colors)
 
 
-def effective_windows_mode(
-    plan_mode: str,
-    app_mode: str | None = None,
-    shell_mode: str | None = None,
-) -> str:
-    if app_mode in {"light", "dark"}:
-        return app_mode
-    return plan_mode
-
-
-def _theme_registry_values(plan: Plan, mode: str | None = None) -> dict[str, int | bytes | str]:
-    palette = plan.palette_for(mode or plan.mode)
-    shell_accent = _shell_accent(palette["accent"])
+def _theme_registry_values(plan: Plan) -> dict[str, int | bytes | str]:
+    shell_accent = _shell_accent(plan.seed_color)
     accent = windows_color_value(shell_accent)
-    surface_rgb = " ".join(str(channel) for channel in parse_hex_color(palette["surface"]))
+    backdrop = mode_independent_surface(plan.seed_color)
+    inactive_titlebar = mode_independent_inactive_titlebar(plan.seed_color, shell_accent=shell_accent)
+    surface_rgb = " ".join(str(channel) for channel in parse_hex_color(backdrop))
     values: dict[str, int | bytes | str] = {
         "EnableTransparency": 0,
         "SystemUsesLightTheme": 0,
@@ -682,9 +681,9 @@ def _theme_registry_values(plan: Plan, mode: str | None = None) -> dict[str, int
         "TitleBarColorPrevalence": 1,
         "AccentColorMenu": accent,
         "StartColorMenu": accent,
-        "AccentPalette": generate_accent_palette(palette["accent"]),
+        "AccentPalette": generate_accent_palette(plan.seed_color),
         "AccentColor": accent,
-        "AccentColorInactive": windows_color_value(palette["surface_subtle"]),
+        "AccentColorInactive": windows_color_value(inactive_titlebar),
         "ColorizationColor": windows_colorization_value(shell_accent),
         "ColorizationAfterglow": windows_colorization_value(shell_accent),
         "Background": surface_rgb,
@@ -692,8 +691,8 @@ def _theme_registry_values(plan: Plan, mode: str | None = None) -> dict[str, int
     return values
 
 
-def _field_statuses(plan: Plan, status: str, shell_mode: str = "dark", mode: str | None = None) -> dict[str, str]:
-    statuses = {name: status for name in _theme_registry_values(plan, mode=mode)}
+def _field_statuses(plan: Plan, status: str, shell_mode: str = "dark") -> dict[str, str]:
+    statuses = {name: status for name in _theme_registry_values(plan)}
     statuses["wallpaper"] = status
     statuses.update({
         "AppsUseLightTheme": "not-applicable",
@@ -708,19 +707,15 @@ def _field_metadata(
     status: str,
     shell_mode: str,
     generated_values: dict[str, Any] | None = None,
-    effective_mode: str | None = None,
 ) -> dict[str, Any]:
-    statuses = _field_statuses(plan, status, shell_mode, mode=effective_mode)
-    metadata = {
+    statuses = _field_statuses(plan, status, shell_mode)
+    return {
         "field_capabilities": statuses,
         "field_inventory": inventory_report("windows", statuses, generated_values),
         "field_groups": inventory_groups("windows", statuses, generated_values),
         "shell_mode": shell_mode,
         "rendering_verification": "untested",
     }
-    if effective_mode is not None:
-        metadata["effective_mode"] = effective_mode
-    return metadata
 
 
 class WindowsAdapter:
@@ -748,13 +743,6 @@ class WindowsAdapter:
     def _mode(self, name: str) -> str:
         value = self.registry.get_value(name)
         return "light" if value == 1 else "dark" if value == 0 else "unknown"
-
-    def _effective_mode(self, plan: Plan) -> str:
-        app_mode = self._mode("AppsUseLightTheme")
-        if app_mode == "unknown":
-            instance = plan.target_instances.get("windows", {})
-            app_mode = str(instance.get("app_mode", "unknown"))
-        return effective_windows_mode(plan.mode, app_mode=app_mode)
 
     def _wallpaper_matches(
         self,
@@ -807,7 +795,6 @@ class WindowsAdapter:
             "system_mode": app_mode,
             "app_mode": app_mode,
             "shell_mode": shell_mode,
-            "effective_mode": effective_windows_mode("dark", app_mode=app_mode),
             "selected_mode_is_independent": True,
             "automatic_accent_enabled": self._auto_colorization_active(),
             "high_contrast": high_contrast,
@@ -870,17 +857,16 @@ class WindowsAdapter:
         try:
             if self.desktop.get_high_contrast() is not False:
                 return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration preserved")
-            effective_mode = self._effective_mode(plan)
-            palette = plan.palette_for(effective_mode)
+            backdrop = mode_independent_surface(plan.seed_color)
             self.config.wallpaper_dir.mkdir(parents=True, exist_ok=True)
             wallpaper_path = (self.config.wallpaper_dir / f"{plan.id}.png").resolve()
-            self._wallpaper_path = generate_wallpaper(palette, wallpaper_path)
+            self._wallpaper_path = generate_wallpaper(backdrop, wallpaper_path)
             if not self.desktop.set_wallpaper(str(self._wallpaper_path)):
                 return AdapterResult(self.target, "failed", True, False, "Windows wallpaper API rejected the generated wallpaper")
             set_bg = getattr(self.desktop, "set_background_color", None)
             if callable(set_bg):
-                set_bg(palette["surface"])
-            registry_values = _theme_registry_values(plan, mode=effective_mode)
+                set_bg(backdrop)
+            registry_values = _theme_registry_values(plan)
             for name, value in registry_values.items():
                 self.registry.set_value(name, value)
             self.desktop.refresh_theme()
@@ -890,7 +876,6 @@ class WindowsAdapter:
                 "applied",
                 self._mode("SystemUsesLightTheme"),
                 {**registry_values, "wallpaper": str(self._wallpaper_path)},
-                effective_mode=effective_mode,
             )
             if auto_colorization:
                 return AdapterResult(
@@ -913,15 +898,14 @@ class WindowsAdapter:
     def verify(self, plan: Plan) -> AdapterResult:
         if self.desktop.get_high_contrast() is not False:
             return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration rendering cannot be accepted")
-        effective_mode = self._effective_mode(plan)
-        palette = plan.palette_for(effective_mode)
+        backdrop = mode_independent_surface(plan.seed_color)
         expected_path = self._wallpaper_path or (self.config.wallpaper_dir / f"{plan.id}.png").resolve()
-        expected_registry = _theme_registry_values(plan, mode=effective_mode)
+        expected_registry = _theme_registry_values(plan)
         colors_ok = all(self.registry.get_value(name) == value for name, value in expected_registry.items())
         wallpaper_ok = (
             expected_path is not None
             and Path(expected_path).is_file()
-            and self._wallpaper_matches(str(expected_path), expected_background_color=palette["surface"])
+            and self._wallpaper_matches(str(expected_path), expected_background_color=backdrop)
         )
         verified = colors_ok and wallpaper_ok
         auto_colorization = self._auto_colorization_active()
@@ -930,7 +914,6 @@ class WindowsAdapter:
             "verified" if verified else "failed",
             self._mode("SystemUsesLightTheme"),
             {**expected_registry, "wallpaper": str(expected_path)},
-            effective_mode=effective_mode,
         )
         if verified and auto_colorization:
             return AdapterResult(

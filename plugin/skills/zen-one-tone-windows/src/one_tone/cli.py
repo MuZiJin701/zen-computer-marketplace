@@ -26,10 +26,11 @@ from .adapters.matlab import _generated_values as _matlab_generated_values
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
 from .adapters.chrome import _manifest
 from .adapters.codex import _theme_updates
-from .adapters.windows import _theme_registry_values, effective_windows_mode
+from .adapters.windows import _theme_registry_values
 from .adapters.vscode_family import build_theme_json
 from .field_mappings import TERMINAL_APPEARANCE_FIELDS, TERMINAL_FIELD_MAPPINGS
 from .inventory import inventory_groups
+from .palette import mode_independent_surface
 from .plan import Plan, PlanIntegrityError, create_plan, load_plan, save_plan
 from .storage import json_safe
 from .transaction import TransactionStatus, TransactionStore, apply_plan, verify_plan
@@ -289,10 +290,7 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
         elif target == "chatgpt-app":
             registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None)
         elif target == "antigravity":
-            registry[target] = AntigravityAdapter(
-                target_instance=antigravity_instance,
-                detect_system_mode=target_instances is None,
-            )
+            registry[target] = AntigravityAdapter(target_instance=antigravity_instance)
         elif target == "matlab":
             registry[target] = MatlabAdapter(
                 target_instance=matlab_instance,
@@ -326,9 +324,7 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
             generated.update({name: value for name, (value, _) in TERMINAL_APPEARANCE_FIELDS.items() if value is not None})
             generated["window.applicationTheme"] = mode
         elif target == "windows":
-            win_instance = plan.target_instances.get("windows", {})
-            win_mode = effective_windows_mode(plan.mode, app_mode=win_instance.get("app_mode"))
-            generated = {**_theme_registry_values(plan, mode=win_mode), "wallpaper": {"color": plan.palette_for(win_mode)["surface"]}}
+            generated = {**_theme_registry_values(plan), "wallpaper": {"color": mode_independent_surface(plan.seed_color)}}
         else:
             generated = {}
         for name, value in generated.items():

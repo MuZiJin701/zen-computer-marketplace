@@ -26,6 +26,12 @@ _Avoid_: 所有背景必须使用的颜色
 
 _Avoid_: 把 Accent 直接当作所有背景
 
+**Mode-independent tonal surface**
+
+由 Seed Color 直接派生、与系统浅/深应用模式无关的低饱和中深调表面角色，用于 Windows 壁纸、桌面底色、非活动标题栏和 Antigravity Hub 底色等原生只支持单一色值的表面；它保留主题色相并保证桌面白色图标文字的可读性，同时通过同色系明度错位使非活动标题栏与壁纸和活动标题栏各自保持清晰边界。
+
+_Avoid_: 直接铺满未降饱和的原始 Seed Color、在无后台监听时绑定当前应用模式导致切模式后校验失配
+
 **Appearance-safe Palette**
 
 同时满足文字可读性、视觉层级区分和极简舒适度（Zen）的 Palette；它严格保证正文 `7:1` 与功能/语义文字 `4.5:1`，在 OKLCH 中提供通透浅色与沉稳深色表面层级，区分柔和结构边框与高对比交互焦点边界，保持 Accent 色相身份，避免主色与代码语义色撞车，并禁止普通角色无理由坍缩为纯黑或纯白。
@@ -151,15 +157,9 @@ _Avoid_: 只校验 AccentPalette 注册表回读、把整个 8 槽压成单一�
 
 **Desktop wallpaper state**
 
-Windows Explorer 通过现代 `IDesktopWallpaper` 接口实际生效的多屏壁纸路径与底色状态，而非仅指旧版注册表 `Control Panel\Desktop\WallPaper` 的回读值；多屏快照和回滚按屏幕分别保留与恢复。
+Windows Explorer 通过现代 `IDesktopWallpaper` 接口实际生效的多屏壁纸路径与底色状态，而非仅指旧版注册表 `Control Panel\Desktop\WallPaper` 的回读值；壁纸与桌面底色使用基于 Seed Color 的 Mode-independent tonal surface，多屏快照和回滚按屏幕分别保留与恢复。
 
 _Avoid_: 仅以注册表壁纸路径代替真实桌面状态、多屏只备份主屏
-
-**Effective Windows mode**
-
-在 Preview、Apply 与 Verify 阶段，单模式目标根据 Windows 当前应用模式（`AppsUseLightTheme`，未知时回退 `plan.mode`）解析出的实际 Palette Mode，用于决定桌面壁纸、桌面底色、非活动标题栏及 Antigravity Hub 底色（`hubSurfaceBackgroundColor`）。工具保持用户应用深浅偏好、不运行后台常驻监听，仅将 Shell 外壳模式（`SystemUsesLightTheme`）切换为深色以原生承载任务栏主题色。
-
-_Avoid_: 让壁纸跟随外壳深色导致浅色应用配深色壁纸、后台主题监听服务
 
 ### Target language
 
@@ -185,7 +185,7 @@ _Avoid_: 应用（当 Windows 系统也在讨论范围内时）
 _Avoid_: Codex CLI、Windows Terminal 主题
 
 **Antigravity desktop app**
-Google Antigravity 2.0 桌面客户端（Target 标识符 `antigravity`），通过 `~/.gemini/config/config.json` 的 `userSettings.themeMode`、`customThemeSeedsLight`、`customThemeSeedsDark` 以及 `%APPDATA%\Antigravity\app_storage.json` 的 `hubSurfaceBackgroundColor` 管理浅色/深色自定义主题种子与 Hub 表面背景色。
+Google Antigravity 2.0 桌面客户端（Target 标识符 `antigravity`），通过 `~/.gemini/config/config.json` 的 `userSettings.themeMode`、`customThemeSeedsLight`、`customThemeSeedsDark` 以及 `%APPDATA%\Antigravity\app_storage.json` 的 `hubSurfaceBackgroundColor` 管理浅色/深色自定义主题种子与模式无关的 Hub 表面背景色。
 _Avoid_: Antigravity IDE、浏览器插件
 
 **Antigravity IDE**
