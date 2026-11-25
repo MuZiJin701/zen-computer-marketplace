@@ -41,7 +41,7 @@ def test_field_inventory_keeps_evidence_and_visual_region_details():
     assert field["technical_field"]
     assert field["official_source"] == "verified-chrome-preferences-v1"
     assert field["version_baseline"]
-    assert field["inventory_version"] == "2026-11-25.v5"
+    assert field["inventory_version"] == "2026-11-25.v6"
     assert field["capability_status"] == "supported"
 
     terminal_groups = inventory_groups("terminal")

@@ -249,6 +249,21 @@ def test_old_v10_plan_is_rejected_for_v11_appearance_policy(tmp_path):
         load_plan("plan-v10-001", tmp_path)
 
 
+def test_old_v11_plan_is_rejected_for_v12_appearance_policy(tmp_path):
+    """Old v11 plans must be recreated through Preview after Chrome sync-isolation v12 bump."""
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#22C55E", ["chrome"], plan_id="plan-v11-001", target_instances={"chrome": instance})
+    path = save_plan(plan, tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["appearance_policy"]["revision"] = "2026-11-25.v11"
+    payload["appearance_policy"]["chrome"] = "native_preferences_system_following_tonal_spot_clean_ntp"
+    payload["hash"] = compute_plan_hash(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PlanIntegrityError, match="appearance policy"):
+        load_plan("plan-v11-001", tmp_path)
+
+
 def test_plan_rejects_relative_chatgpt_app_target_instance(tmp_path):
     relative_plan = create_plan(
         "#22C55E",

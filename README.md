@@ -68,7 +68,7 @@ skills remove zen-one-tone-windows
 ## 使用提示
 
 - **Windows 强调色与壁纸**：应用后会同步逐屏壁纸并关闭系统透明效果，并自动采用 Windows 原生自定义模式（系统外壳深色 + 保持你的应用浅/深模式）以稳定显示任务栏主题色；壁纸、桌面底色、非活动标题栏及 Shell 强调色均由主色直接派生且与浅/深应用模式无关（切换应用浅/深模式时无需重跑 `sync`），回滚时原样恢复；如果开启了“自动从背景中选取强调色”，系统可能会覆盖固定主色，建议先关闭该开关。
-- **Chrome 原生动态主题**：直接向 Google Chrome 活跃 Profile 的 `Preferences` 写入基于主色的 Material 3 种子色（`kTonalSpot`）并清理新标签页自定义背景图，自动随系统浅/深模式实时热切换（不再生成双套扩展包）；执行 `sync`/`apply`/`rollback` 时如检测到 Chrome 正在运行会先温和关闭（3 秒超时后强杀，写完不自动重开），请先保存网页中未提交的内容；若重启后被 Chrome 账号同步中的旧主题覆写，在「自定义 Chrome」重置一次默认主题或关闭主题同步即可。
+- **Chrome 原生动态主题**：直接向 Google Chrome 活跃 Profile 的 `Preferences` 写入基于主色的 Material 3 种子色（`kTonalSpot`），清理新标签页自定义背景图并在开启账号同步时自动仅隔离「主题背景」同步、保留书签/密码/扩展等其他同步项，随系统浅/深模式实时热切换（不再生成双套扩展包，回滚时自动恢复原同步设置）；执行 `sync`/`apply`/`rollback` 时如检测到 Chrome 正在运行会先温和关闭（3 秒超时后强杀，写完不自动重开），请先保存网页中未提交的内容。
 - **明暗模式与终端**：Windows Terminal、VS Code、TRAE、Antigravity IDE、ChatGPT App、Antigravity、MATLAB（`>= R2025a`）和 Chrome 均默认跟随系统应用浅/深色模式自动切换；若安装了 PowerShell 7（`pwsh`），终端启动时还会自动适配对应深浅模式的预测与语法色。
 - **MATLAB 同步注意**：MATLAB 仅统一内容区、编辑器与语法配色（不修改安装包内置工具条外框，结果标为 `partial`），保留绘图主题（`GraphicsTheme`）与开关；执行 `sync`/`apply`/`rollback` 时如检测到 MATLAB 正在运行会先温和关闭（3 秒超时后强杀，写完不自动重开），请先保存未保存的代码或工作区变量。
 - **保留个人设置**：不会改动你的字体或无关偏好；旧版应用不支持的字段会保持原样并标记为 `partial`。

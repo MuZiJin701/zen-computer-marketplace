@@ -15,7 +15,7 @@ from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 APPEARANCE_POLICY = {
-    "revision": "2026-11-25.v11",
+    "revision": "2026-11-25.v12",
     "windows.EnableTransparency": 0,
     "windows.taskbar_custom_mode": "shell_dark_preserve_app_mode",
     "windows.single_value_surfaces": "mode_independent_seed_derived_with_idesktopwallpaper",
@@ -24,7 +24,7 @@ APPEARANCE_POLICY = {
     "chatgpt-app.appearanceTheme": "system",
     "matlab.MATLABTheme": "System",
     "matlab.contrast_guard": "body>=7.0;syntax>=4.5-across-surface-and-highlights",
-    "chrome": "native_preferences_system_following_tonal_spot_clean_ntp",
+    "chrome": "native_preferences_system_following_tonal_spot_clean_ntp_sync_isolated",
     "live_process_shutdown": "graceful_3s_then_force_no_relaunch",
     "fonts": "preserve; repair missing ChatGPT fonts tables only",
     "app_mode_auto_colorization_high_contrast": "preserve",
