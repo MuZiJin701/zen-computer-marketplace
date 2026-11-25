@@ -10,7 +10,7 @@ from typing import Any, Mapping
 
 from ..plan import Plan
 from ..inventory import inventory_groups, inventory_report
-from ..storage import atomic_write_text
+from ..storage import atomic_write_bytes, atomic_write_text
 from .base import AdapterResult, field_capabilities
 
 CHATGPT_APP_CONFIG_SCHEMA_V1 = "chatgpt-app-config-v1"
@@ -95,12 +95,12 @@ def _skip_result(message: str) -> AdapterResult:
     return AdapterResult("chatgpt-app", "skipped", False, False, message)
 
 
-def _theme_metadata(plan: Plan | None = None, status: str = "supported") -> dict[str, Any]:
+def _theme_metadata(plan: Plan | None = None, status: str = "supported", *, target_instance: Mapping[str, Any] | None = None) -> dict[str, Any]:
     statuses = {name: status if capability == "supported" else capability for name, capability in field_capabilities("chatgpt-app").items()}
     values = {f"{table.removeprefix('desktop.')}.{key}": value for table, entries in _theme_updates(plan.palettes).items() for key, value in entries.items()} if plan else {}
     if plan:
         values["appearanceTheme"] = "system"
-    return {
+    metadata: dict[str, Any] = {
         "field_capabilities": statuses,
         "generated_values": values,
         "field_inventory": inventory_report("chatgpt-app", statuses, values),
@@ -111,6 +111,9 @@ def _theme_metadata(plan: Plan | None = None, status: str = "supported") -> dict
             "reason": "The embedded terminal uses an independent xterm/CSS theme; no verified user setting exposes its ANSI table or minimumContrastRatio",
         },
     }
+    if target_instance is not None:
+        metadata["target_instance"] = dict(target_instance)
+    return metadata
 
 
 def _theme_updates(palettes: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, Any]]:
@@ -214,8 +217,24 @@ def _matches_plan(payload: dict[str, Any], plan: Plan) -> bool:
 class CodexAdapter:
     target = "chatgpt-app"
 
-    def __init__(self, config_path: Path | None = None) -> None:
-        self.config_path = locate_verified_codex_config(config_path)
+    def __init__(self, config_path: Path | None = None, *, target_instance: Mapping[str, Any] | None = None) -> None:
+        self._frozen_instance: dict[str, Any] | None = dict(target_instance) if target_instance is not None else None
+        if self._frozen_instance is not None:
+            raw_path = self._frozen_instance.get("config_path")
+            if self._frozen_instance.get("status") == "ok" and isinstance(raw_path, str) and raw_path and Path(raw_path).is_absolute():
+                self.config_path: Path | None = Path(raw_path)
+            else:
+                self.config_path = None
+        else:
+            self.config_path = locate_verified_codex_config(config_path)
+
+    def target_instance(self) -> dict[str, Any]:
+        if self._frozen_instance is not None:
+            return dict(self._frozen_instance)
+        document = self._document()
+        if self.config_path is None or document is None:
+            return {"status": "skipped", "reason": f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}"}
+        return {"status": "ok", "config_path": str(self.config_path.resolve())}
 
     def _document(self) -> tuple[str, dict[str, Any]] | None:
         if self.config_path is None:
@@ -244,22 +263,30 @@ class CodexAdapter:
             not missing_font_tables,
             f"verified ChatGPT App config.toml: {self.config_path}{repair_message}; embedded terminal unsupported; rendering untested",
             version=CHATGPT_APP_CONFIG_SCHEMA_V1,
-            metadata=_theme_metadata(),
+            metadata=_theme_metadata(target_instance=self.target_instance()),
         )
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
-        if self._document() is None:
+        if self._document() is None or self.config_path is None:
             return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(self.config_path, backup_dir / "codex-config.toml")
-            return AdapterResult(self.target, "ok", False, True, "ChatGPT App config.toml snapshot saved", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
+            return AdapterResult(
+                self.target,
+                "ok",
+                False,
+                True,
+                "ChatGPT App config.toml snapshot saved",
+                version=CHATGPT_APP_CONFIG_SCHEMA_V1,
+                metadata={"target_instance": self.target_instance()},
+            )
         except OSError as error:
             return AdapterResult(self.target, "failed", False, False, f"ChatGPT App snapshot failed: {error}", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
 
     def apply(self, plan: Plan) -> AdapterResult:
         document = self._document()
-        if document is None:
+        if document is None or self.config_path is None:
             return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         original, payload = document
         updated = _replace_verified_values(
@@ -272,7 +299,15 @@ class CodexAdapter:
             if not _is_v1_payload(candidate) or not _matches_plan(candidate, plan):
                 return _skip_result("ChatGPT App TOML layout cannot be safely updated; configuration preserved")
             atomic_write_text(self.config_path, updated, newline="")
-            return AdapterResult(self.target, "ok", updated != original, False, "ChatGPT App config.toml theme written", version=CHATGPT_APP_CONFIG_SCHEMA_V1, metadata=_theme_metadata(plan, "applied"))
+            return AdapterResult(
+                self.target,
+                "ok",
+                updated != original,
+                False,
+                "ChatGPT App config.toml theme written",
+                version=CHATGPT_APP_CONFIG_SCHEMA_V1,
+                metadata=_theme_metadata(plan, "applied", target_instance=self.target_instance()),
+            )
         except tomllib.TOMLDecodeError:
             return _skip_result("ChatGPT App TOML layout cannot be safely updated; configuration preserved")
         except OSError as error:
@@ -290,18 +325,24 @@ class CodexAdapter:
             verified,
             "ChatGPT App config.toml theme verified; embedded terminal unsupported; rendering untested" if verified else "ChatGPT App config.toml theme does not match Plan; rendering untested",
             version=CHATGPT_APP_CONFIG_SCHEMA_V1,
-            metadata=_theme_metadata(plan, "verified" if verified else "failed"),
+            metadata=_theme_metadata(plan, "verified" if verified else "failed", target_instance=self.target_instance()),
         )
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:
-        if self.config_path is None:
+        target_path = self.config_path
+        if target_path is None and isinstance(metadata, Mapping) and isinstance(metadata.get("target_instance"), Mapping):
+            raw_meta_path = metadata["target_instance"].get("config_path")
+            if isinstance(raw_meta_path, str) and raw_meta_path and Path(raw_meta_path).is_absolute():
+                target_path = Path(raw_meta_path)
+        if target_path is None:
             return _skip_result(f"ChatGPT App config.toml does not match {CHATGPT_APP_CONFIG_SCHEMA_V1}")
         backup = backup_dir / "codex-config.toml"
         if not backup.is_file():
             return AdapterResult(self.target, "failed", False, False, "ChatGPT App config.toml backup not found", version=CHATGPT_APP_CONFIG_SCHEMA_V1)
         try:
-            shutil.copy2(backup, self.config_path)
-            restored = self.config_path.read_bytes() == backup.read_bytes()
+            backup_bytes = backup.read_bytes()
+            atomic_write_bytes(target_path, backup_bytes)
+            restored = target_path.read_bytes() == backup_bytes
             return AdapterResult(
                 self.target,
                 "ok" if restored else "failed",

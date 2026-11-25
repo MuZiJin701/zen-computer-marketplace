@@ -468,3 +468,42 @@ def test_windows_rollback_restores_solid_black_empty_wallpaper_state(tmp_path):
     assert desktop.monitor_wallpapers == ["", ""]
     assert desktop.background_color == "#000000"
     assert registry.values["Background"] == "0 0 0"
+
+
+def test_windows_rollback_does_not_overwrite_existing_readonly_wallpaper_and_writes_compact_png(tmp_path, monkeypatch):
+    import one_tone.adapters.windows as windows_mod
+
+    readonly_wp = tmp_path / "system-wallpaper.jpg"
+    readonly_wp.write_bytes(b"system-wallpaper-bytes")
+    readonly_wp.chmod(0o444)
+    registry = InMemoryRegistryBackend({"CurrentBuild": "26300", "AppsUseLightTheme": 1, "SystemUsesLightTheme": 1})
+    desktop = InMemoryDesktopBackend(wallpaper=str(readonly_wp))
+    adapter = WindowsAdapter(WindowsConfig(tmp_path / "wp"), registry, desktop)
+    plan = create_plan("#22C55E", ["windows"], plan_id="plan-windows-readonly-wp-001")
+
+    assert adapter.snapshot(tmp_path / "backup").status == "ok"
+    assert adapter.apply(plan).status == "ok"
+    generated_png = (tmp_path / "wp" / f"{plan.id}.png").read_bytes()
+    assert generated_png.startswith(b"\x89PNG\r\n\x1a\n")
+    # Default 64x64 solid PNG IHDR dimensions
+    assert int.from_bytes(generated_png[16:20], "big") == 64
+    assert int.from_bytes(generated_png[20:24], "big") == 64
+
+    orig_atomic_write_bytes = windows_mod.atomic_write_bytes
+
+    def guard_write(path, data):
+        if path == readonly_wp:
+            raise PermissionError("must not overwrite existing wallpaper")
+        return orig_atomic_write_bytes(path, data)
+
+    monkeypatch.setattr(windows_mod, "atomic_write_bytes", guard_write)
+    rb = adapter.rollback(tmp_path / "backup")
+    assert rb.verified is True
+    assert desktop.get_wallpaper() == str(readonly_wp)
+
+    # When original file was removed after Apply, rollback restores it from backup
+    monkeypatch.undo()
+    readonly_wp.chmod(0o666)
+    readonly_wp.unlink()
+    assert adapter.rollback(tmp_path / "backup").verified is True
+    assert readonly_wp.read_bytes() == b"system-wallpaper-bytes"

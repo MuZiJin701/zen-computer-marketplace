@@ -61,9 +61,21 @@ def test_antigravity_adapter_applies_verifies_and_restores_preserving_fields(tmp
     assert updated_storage["windowBounds"] == {"width": 1200}
 
     assert adapter.verify(plan).verified is True
+    # User adds unrelated config and storage fields after Apply -> field-level rollback preserves them
+    post_cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    post_cfg["userSettings"]["postApply"] = "keep-me"
+    config_path.write_text(json.dumps(post_cfg), encoding="utf-8")
+    post_st = json.loads(storage_path.read_text(encoding="utf-8"))
+    post_st["postStorage"] = 123
+    storage_path.write_text(json.dumps(post_st), encoding="utf-8")
+
     assert adapter.rollback(tmp_path / "backup").verified is True
-    assert config_path.read_bytes() == original_config
-    assert storage_path.read_bytes() == original_storage
+    expected_cfg = json.loads(original_config.decode("utf-8"))
+    expected_cfg["userSettings"]["postApply"] = "keep-me"
+    expected_st = json.loads(original_storage.decode("utf-8"))
+    expected_st["postStorage"] = 123
+    assert json.loads(config_path.read_text(encoding="utf-8")) == expected_cfg
+    assert json.loads(storage_path.read_text(encoding="utf-8")) == expected_st
 
 
 def test_antigravity_adapter_skips_when_both_files_missing(tmp_path):
@@ -97,3 +109,23 @@ def test_antigravity_hub_surface_is_mode_independent(tmp_path):
         assert adapter.verify(plan).verified is True
 
     assert outputs["light"] == outputs["dark"] == expected_hub
+
+
+def test_antigravity_rollback_validates_both_files_before_writing(tmp_path):
+    config_path = tmp_path / "config.json"
+    storage_path = tmp_path / "app_storage.json"
+    config_path.write_text(json.dumps({"userSettings": {"themeMode": "THEME_MODE_DARK"}}), encoding="utf-8")
+    storage_path.write_text(json.dumps({"hubSurfaceBackgroundColor": "#000000"}), encoding="utf-8")
+
+    adapter = AntigravityAdapter(config_path=config_path, storage_path=storage_path)
+    plan = create_plan("#22C55E", ["antigravity"], plan_id="plan-ag-corrupt-rb-001")
+    backup_dir = tmp_path / "backup"
+    assert adapter.snapshot(backup_dir).status == "ok"
+    assert adapter.apply(plan).status == "ok"
+
+    before_config = config_path.read_bytes()
+    storage_path.write_text("{corrupt json", encoding="utf-8")
+    rb = adapter.rollback(backup_dir)
+    assert rb.status == "failed"
+    assert rb.changed is False
+    assert config_path.read_bytes() == before_config

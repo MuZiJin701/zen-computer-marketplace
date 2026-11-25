@@ -491,13 +491,38 @@ def test_vscode_reads_jsonc_reports_ok_on_verify_and_includes_expanded_token_col
     plan = create_plan("#22C55E", ["vscode"], plan_id="plan-vscode-jsonc-001")
 
     assert adapter.detect().status == "ok"
+    assert adapter.snapshot(tmp_path / "backup").status == "ok"
     assert adapter.apply(plan).status == "ok"
     verify = adapter.verify(plan)
     assert verify.verified is True
     assert verify.status == "ok"
-    saved = json.loads(settings.read_text(encoding="utf-8"))
+    raw_after_apply = settings.read_text(encoding="utf-8")
+    assert "// User VS Code settings" in raw_after_apply
+    assert "/* keep URL strings intact */" in raw_after_apply
+    from one_tone.storage import loads_jsonc
+    saved = loads_jsonc(raw_after_apply)
     assert saved["http.proxy"] == "http://127.0.0.1:7890"
     assert saved["workbench.colorTheme"] == "One Tone vscode Light"
     theme = build_theme_json(plan, "One Tone vscode Light", "light")
     scopes = {scope for rule in theme["tokenColors"] for scope in rule["scope"]}
     assert {"markup.heading", "support.type.property-name.json", "entity.name.tag", "entity.other.attribute-name"} <= scopes
+
+    # Post-Apply edits and newly installed extensions survive field/entry-level rollback
+    settings.write_text(
+        raw_after_apply.replace('"http.proxy": "http://127.0.0.1:7890",', '"http.proxy": "http://127.0.0.1:8888",\n  "editor.tabSize": 4,'),
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "extensions" / "extensions.json"
+    entries = json.loads(index_path.read_text(encoding="utf-8"))
+    entries.append({"identifier": {"id": "ms-python.python"}, "version": "2026.1.0", "relativeLocation": "ms-python.python-2026.1.0"})
+    index_path.write_text(json.dumps(entries), encoding="utf-8")
+
+    assert adapter.rollback(tmp_path / "backup").verified is True
+    raw_after_rb = settings.read_text(encoding="utf-8")
+    assert "// User VS Code settings" in raw_after_rb
+    restored = loads_jsonc(raw_after_rb)
+    assert restored["workbench.colorTheme"] == "Default Dark+"
+    assert restored["http.proxy"] == "http://127.0.0.1:8888"
+    assert restored["editor.tabSize"] == 4
+    restored_ext_ids = [item["identifier"]["id"] for item in json.loads(index_path.read_text(encoding="utf-8"))]
+    assert restored_ext_ids == ["ms-python.python"]

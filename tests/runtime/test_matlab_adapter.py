@@ -451,9 +451,12 @@ def test_matlab_corrupted_manifest_or_group_is_never_overwritten_or_verified(tmp
     assert valid_path.read_bytes() == corrupted_bytes
 
     # Case D: Duplicate ZIP member names rejected without overwriting, and verify reports failed
+    import warnings
     dup_path = _make_mlsettings(tmp_path / "dup_zip" / "R2026a" / "matlab.mlsettings")
-    with zipfile.ZipFile(dup_path, "a", compression=zipfile.ZIP_DEFLATED) as zapp:
-        zapp.writestr("fsroot/schema.json", "com.mathworks/settings/jsonschema/1-1-0")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(dup_path, "a", compression=zipfile.ZIP_DEFLATED) as zapp:
+            zapp.writestr("fsroot/schema.json", "com.mathworks/settings/jsonschema/1-1-0")
     dup_bytes = dup_path.read_bytes()
     adapter_d = MatlabAdapter(
         target_instance={"status": "ok", "settings_path": str(dup_path.resolve()), "release": "R2026a"},
@@ -1361,8 +1364,8 @@ def test_matlab_snapshot_failure_does_not_fail_multi_target_rollback(tmp_path):
     restored = store.rollback(latest_id, {"antigravity": ag_adapter, "matlab": matlab_adapter})
     assert restored.status == TransactionStatus.ROLLED_BACK
     assert restored.results["matlab"][-1]["status"] == "skipped"
-    assert ag_config.read_text(encoding="utf-8") == original_ag_config
-    assert ag_storage.read_text(encoding="utf-8") == original_ag_storage
+    assert json.loads(ag_config.read_text(encoding="utf-8")) == json.loads(original_ag_config)
+    assert json.loads(ag_storage.read_text(encoding="utf-8")) == json.loads(original_ag_storage)
     assert settings_path.read_bytes() == original_matlab
 
 
@@ -1559,3 +1562,35 @@ def test_matlab_rollback_post_write_readback_error_records_changed_true(tmp_path
     assert rb_op["verified"] is False
     app_doc = _read_group(settings_path, "/settingstree/matlab/appearance")
     assert app_doc is not None and json.loads(app_doc["settings"][0]["value"]) == "Dark"
+
+
+def test_matlab_managed_process_shutdown_closes_during_write_and_fails_closed_if_stuck(tmp_path):
+    settings_path = _make_theme_mlsettings(tmp_path / "R2026a" / "matlab.mlsettings", "Dark")
+    state = {"running": True, "close_calls": 0}
+
+    def closer():
+        state["close_calls"] += 1
+        state["running"] = False
+        return True, "MATLAB closed gracefully"
+
+    adapter = MatlabAdapter(settings_path=settings_path, is_running_fn=lambda: state["running"], process_closer=closer)
+    plan = create_plan("#22C55E", ["matlab"], plan_id="plan-matlab-close-001", target_instances={"matlab": adapter.target_instance()})
+    assert adapter.detect().status == "partial"
+    assert state["close_calls"] == 0  # detect stays strictly read-only
+
+    store = TransactionStore(tmp_path / "transactions")
+    record = apply_plan(plan, {"matlab": adapter}, store, confirm=True)
+    assert record.status == TransactionStatus.PARTIAL
+    assert state["close_calls"] == 1
+
+    state["running"] = True
+    rb = store.rollback(record.id, {"matlab": adapter})
+    assert rb.status == TransactionStatus.ROLLED_BACK
+    assert state["close_calls"] == 2
+
+    stubborn = MatlabAdapter(
+        settings_path=settings_path,
+        is_running_fn=lambda: True,
+        process_closer=lambda: (False, "refused exit"),
+    )
+    assert stubborn.rollback(store.backup_path_for(record.id, "matlab")).status == "failed"

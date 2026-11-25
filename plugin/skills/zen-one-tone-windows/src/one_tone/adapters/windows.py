@@ -22,7 +22,7 @@ from ..palette import (
     parse_hex_color,
 )
 from ..plan import Plan
-from ..storage import BYTES_MARKER, atomic_write_text, json_safe
+from ..storage import BYTES_MARKER, atomic_write_bytes, atomic_write_text, json_safe
 from .base import AdapterResult
 
 try:
@@ -600,7 +600,7 @@ def _png_chunk(kind: bytes, payload: bytes) -> bytes:
     return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
 
 
-def generate_wallpaper(surface: str | Mapping[str, str], path: Path, width: int = 1920, height: int = 1080) -> Path:
+def generate_wallpaper(surface: str | Mapping[str, str], path: Path, width: int = 64, height: int = 64) -> Path:
     if width < 1 or height < 1:
         raise ValueError("Wallpaper dimensions must be positive")
     surface_hex = surface if isinstance(surface, str) else surface["surface"]
@@ -611,8 +611,7 @@ def generate_wallpaper(surface: str | Mapping[str, str], path: Path, width: int 
     raw += _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
     raw += _png_chunk(b"IDAT", zlib.compress(bytes(rows), level=9))
     raw += _png_chunk(b"IEND", b"")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(raw)
+    atomic_write_bytes(path, raw)
     return path
 
 
@@ -854,6 +853,7 @@ class WindowsAdapter:
             return AdapterResult(self.target, "failed", False, False, f"Windows snapshot failed: {error}")
 
     def apply(self, plan: Plan) -> AdapterResult:
+        changed = False
         try:
             if self.desktop.get_high_contrast() is not False:
                 return AdapterResult(self.target, "skipped", False, False, "High contrast is active or unknown; configuration preserved")
@@ -863,6 +863,7 @@ class WindowsAdapter:
             self._wallpaper_path = generate_wallpaper(backdrop, wallpaper_path)
             if not self.desktop.set_wallpaper(str(self._wallpaper_path)):
                 return AdapterResult(self.target, "failed", True, False, "Windows wallpaper API rejected the generated wallpaper")
+            changed = True
             set_bg = getattr(self.desktop, "set_background_color", None)
             if callable(set_bg):
                 set_bg(backdrop)
@@ -893,7 +894,7 @@ class WindowsAdapter:
                 metadata=metadata,
             )
         except (OSError, KeyError, ValueError) as error:
-            return AdapterResult(self.target, "failed", False, False, f"Windows apply failed: {error}")
+            return AdapterResult(self.target, "failed", changed, False, f"Windows apply failed: {error}")
 
     def verify(self, plan: Plan) -> AdapterResult:
         if self.desktop.get_high_contrast() is not False:
@@ -947,13 +948,13 @@ class WindowsAdapter:
             monitor_wallpapers = metadata.get("monitor_wallpapers")
             wallpaper_backups = metadata.get("wallpaper_backups") or {}
             original_backup = backup_dir / "original-wallpaper"
-            if old_path and original_backup.is_file():
-                shutil.copy2(original_backup, old_path)
+            if old_path and original_backup.is_file() and not Path(old_path).is_file():
+                atomic_write_bytes(Path(old_path), original_backup.read_bytes())
             if isinstance(wallpaper_backups, dict):
                 for dest_path, backup_name in wallpaper_backups.items():
                     backup_file = backup_dir / str(backup_name)
-                    if dest_path and backup_file.is_file():
-                        shutil.copy2(backup_file, dest_path)
+                    if dest_path and backup_file.is_file() and not Path(dest_path).is_file():
+                        atomic_write_bytes(Path(dest_path), backup_file.read_bytes())
             try:
                 if isinstance(monitor_wallpapers, dict) and monitor_wallpapers and callable(getattr(self.desktop, "set_monitor_wallpapers", None)):
                     if not self.desktop.set_monitor_wallpapers(monitor_wallpapers):

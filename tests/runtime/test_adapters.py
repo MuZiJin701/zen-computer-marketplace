@@ -39,10 +39,13 @@ def test_field_inventory_keeps_evidence_and_visual_region_details():
     assert "browser chrome" in groups
     field = groups["browser chrome"][0]
     assert field["technical_field"]
-    assert field["official_source"].startswith("https://")
+    assert field["official_source"] == "verified-chrome-preferences-v1"
     assert field["version_baseline"]
-    assert field["inventory_version"] == "2026-10-05.v4"
+    assert field["inventory_version"] == "2026-11-25.v5"
     assert field["capability_status"] == "supported"
+
+    terminal_groups = inventory_groups("terminal")
+    assert terminal_groups["terminal"][0]["official_source"].startswith("https://")
 
 
 def test_field_inventory_classifies_text_evidence_and_opacity_policy():

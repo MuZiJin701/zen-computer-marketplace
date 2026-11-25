@@ -14,7 +14,7 @@ from typing import Any, Callable, Mapping
 from ..palette import contrast_ratio, parse_hex_color
 from ..plan import Plan
 from ..field_mappings import TERMINAL_APPEARANCE_FIELDS, terminal_capabilities, terminal_palette_key, terminal_scheme_colors
-from ..storage import atomic_write_text, loads_jsonc
+from ..storage import atomic_write_text, loads_jsonc, patch_jsonc_object
 from .base import AdapterResult, field_capabilities
 
 _SCHEME_NAME = "One Tone"
@@ -557,7 +557,16 @@ class TerminalAdapter:
 
     def apply(self, plan: Plan) -> AdapterResult:
         try:
-            settings = self._read()
+            raw_text = self.settings_path.read_text(encoding="utf-8")
+            settings = loads_jsonc(raw_text)
+            if not isinstance(settings, dict):
+                raise ValueError("Terminal settings must be a JSON object")
+            profiles = settings.get("profiles", {})
+            if not isinstance(profiles, dict) or not isinstance(profiles.get("defaults", {}), dict):
+                raise ValueError("Terminal profiles/defaults must be JSON objects")
+            entries = profiles.get("list", [])
+            if not isinstance(entries, list) or any(not isinstance(profile, dict) for profile in entries):
+                raise ValueError("Terminal Profile list must contain JSON objects")
             resolved = resolve_default_profile(settings)
             if resolved is None:
                 return AdapterResult(self.target, "failed", False, False, "Terminal default Profile could not be resolved")
@@ -604,10 +613,17 @@ class TerminalAdapter:
                 themes.append(theme)
             settings["themes"] = themes
             settings["theme"] = dict(_SCHEME_MAPPING) if appearance_capabilities["theme"] == "supported" else "system"
-            atomic_write_text(
-                self.settings_path,
-                json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
+            patched = patch_jsonc_object(
+                raw_text,
+                {
+                    "profiles": settings["profiles"],
+                    "schemes": settings["schemes"],
+                    "themes": settings["themes"],
+                    "theme": settings["theme"],
+                },
+                expected_dict=settings,
             )
+            atomic_write_text(self.settings_path, patched)
             self._discover_shell()
             shell_status, shell_message = self._apply_profile(plan)
             limited = "unsupported" in appearance_capabilities.values()
@@ -625,7 +641,16 @@ class TerminalAdapter:
 
     def verify(self, plan: Plan) -> AdapterResult:
         try:
-            settings = self._read()
+            raw_text = self.settings_path.read_text(encoding="utf-8")
+            settings = loads_jsonc(raw_text)
+            if not isinstance(settings, dict):
+                raise ValueError("Terminal settings must be a JSON object")
+            profiles = settings.get("profiles", {})
+            if not isinstance(profiles, dict) or not isinstance(profiles.get("defaults", {}), dict):
+                raise ValueError("Terminal profiles/defaults must be JSON objects")
+            entries = profiles.get("list", [])
+            if not isinstance(entries, list) or any(not isinstance(profile, dict) for profile in entries):
+                raise ValueError("Terminal Profile list must contain JSON objects")
             resolved = resolve_default_profile(settings)
             if resolved is None:
                 return AdapterResult(self.target, "failed", False, False, "Terminal default Profile could not be resolved")

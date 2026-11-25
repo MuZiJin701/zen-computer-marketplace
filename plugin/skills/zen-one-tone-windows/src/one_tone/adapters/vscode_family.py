@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import shutil
 import subprocess
@@ -10,8 +11,15 @@ from typing import Any, Callable, Mapping
 from ..editor_instance import EditorSpec
 from ..field_mappings import vscode_capabilities, vscode_theme_colors
 from ..plan import Plan
-from ..storage import atomic_write_text, loads_jsonc
+from ..storage import atomic_write_bytes, atomic_write_text, loads_jsonc, patch_jsonc_object
 from .base import AdapterResult, field_capabilities
+
+_MANAGED_SETTINGS_KEYS = (
+    "workbench.colorTheme",
+    "workbench.preferredDarkColorTheme",
+    "workbench.preferredLightColorTheme",
+    "window.autoDetectColorScheme",
+)
 
 
 def build_theme_json(plan: Plan, theme_name: str, mode: str | None = None, *, baseline: str = "1.140.0") -> dict[str, Any]:
@@ -264,11 +272,30 @@ class VSCodeFamilyAdapter:
 
     def _snapshot_extension_state_in(self, extensions_dir: Path, backup_dir: Path, prefix: str) -> None:
         index = extensions_dir / "extensions.json"
-        if index.is_file():
+        index_exists = index.is_file()
+        saved_entries: list[dict[str, Any]] | None = None
+        if index_exists:
             shutil.copy2(index, backup_dir / f"{prefix}-extensions.json")
+            try:
+                loaded = json.loads(index.read_text(encoding="utf-8"))
+                normalized = loaded if isinstance(loaded, list) else [loaded] if isinstance(loaded, dict) else None
+                if normalized is not None:
+                    saved_entries = [
+                        copy.deepcopy(entry)
+                        for entry in normalized
+                        if isinstance(entry, dict) and entry.get("identifier", {}).get("id") == self._extension_id()
+                    ]
+            except (OSError, json.JSONDecodeError):
+                saved_entries = None
+        else:
+            saved_entries = []
         obsolete = extensions_dir / ".obsolete"
         if obsolete.is_file():
             shutil.copy2(obsolete, backup_dir / f"{prefix}-extensions-obsolete")
+        atomic_write_text(
+            backup_dir / f"{prefix}-extensions-state.json",
+            json.dumps({"index_exists": index_exists, "entries": saved_entries}, ensure_ascii=False, sort_keys=True),
+        )
         installed_backup = backup_dir / f"{prefix}-installed"
         for extension_dir in self._installed_extension_dirs_in(extensions_dir):
             shutil.copytree(extension_dir, installed_backup / extension_dir.name)
@@ -291,25 +318,66 @@ class VSCodeFamilyAdapter:
 
         index = extensions_dir / "extensions.json"
         index_backup = backup_dir / f"{prefix}-extensions.json"
-        if index_backup.is_file():
-            extensions_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(index_backup, index)
-        elif index.exists():
-            index.unlink()
+        ext_state_path = backup_dir / f"{prefix}-extensions-state.json"
+        index_restored = False
+        if ext_state_path.is_file():
+            try:
+                ext_state = json.loads(ext_state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                ext_state = {}
+            saved_entries = ext_state.get("entries")
+            index_existed = bool(ext_state.get("index_exists", index_backup.is_file()))
+            if isinstance(saved_entries, list):
+                current_entries: list[dict[str, Any]] | None = []
+                if index.is_file():
+                    try:
+                        loaded = json.loads(index.read_text(encoding="utf-8"))
+                        if isinstance(loaded, list):
+                            current_entries = [entry for entry in loaded if isinstance(entry, dict)]
+                        elif isinstance(loaded, dict):
+                            current_entries = [loaded]
+                        else:
+                            current_entries = None
+                    except (OSError, json.JSONDecodeError):
+                        current_entries = None
+                if current_entries is not None:
+                    merged = [entry for entry in current_entries if entry.get("identifier", {}).get("id") != self._extension_id()]
+                    merged.extend(copy.deepcopy(entry) for entry in saved_entries if isinstance(entry, dict))
+                    if not index_existed and not merged:
+                        if index.exists():
+                            index.unlink()
+                        index_restored = not index.exists()
+                    else:
+                        atomic_write_text(index, json.dumps(merged, ensure_ascii=False, separators=(",", ":")))
+                        try:
+                            verified_entries = json.loads(index.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError):
+                            verified_entries = None
+                        actual_own = [
+                            entry
+                            for entry in (verified_entries if isinstance(verified_entries, list) else [])
+                            if isinstance(entry, dict) and entry.get("identifier", {}).get("id") == self._extension_id()
+                        ]
+                        index_restored = actual_own == saved_entries
+        if not index_restored:
+            if index_backup.is_file():
+                atomic_write_bytes(index, index_backup.read_bytes())
+                index_restored = index.read_bytes() == index_backup.read_bytes()
+            elif index.exists():
+                index.unlink()
+                index_restored = not index.exists()
+            else:
+                index_restored = True
 
         obsolete = extensions_dir / ".obsolete"
         obsolete_backup = backup_dir / f"{prefix}-extensions-obsolete"
         if obsolete_backup.is_file():
-            extensions_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(obsolete_backup, obsolete)
+            atomic_write_bytes(obsolete, obsolete_backup.read_bytes())
         elif obsolete.exists():
             obsolete.unlink()
 
         current_names = {path.name for path in self._installed_extension_dirs_in(extensions_dir)}
         backup_names = {path.name for path in installed_backup.iterdir()} if installed_backup.is_dir() else set()
-        index_restored = (not index_backup.is_file() and not index.exists()) or (
-            index_backup.is_file() and index.read_bytes() == index_backup.read_bytes()
-        )
         return current_names == backup_names and index_restored
 
     def _restore_extension_state(self, backup_dir: Path) -> bool:
@@ -438,17 +506,86 @@ class VSCodeFamilyAdapter:
         return self._manual_install_vsix_to(vsix_path, self.spec.extensions_dir)
 
     def _apply_theme_settings_to(self, settings_path: Path, mode: str, allow_missing: bool = True) -> dict[str, Any]:
+        raw_text = settings_path.read_text(encoding="utf-8") if settings_path.is_file() else ""
         settings = self._read_settings_at(settings_path, allow_missing=allow_missing)
-        settings["workbench.colorTheme"] = self._theme_label(mode)
-        settings["workbench.preferredDarkColorTheme"] = self._theme_label("dark")
-        settings["workbench.preferredLightColorTheme"] = self._theme_label("light")
-        settings["window.autoDetectColorScheme"] = True
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        updates = {
+            "workbench.colorTheme": self._theme_label(mode),
+            "workbench.preferredDarkColorTheme": self._theme_label("dark"),
+            "workbench.preferredLightColorTheme": self._theme_label("light"),
+            "window.autoDetectColorScheme": True,
+        }
+        settings.update(updates)
         atomic_write_text(
             settings_path,
-            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
+            patch_jsonc_object(raw_text, updates, expected_dict=settings),
         )
         return settings
+
+    @staticmethod
+    def _snapshot_settings_entries(settings_path: Path) -> dict[str, Any] | None:
+        if not settings_path.is_file():
+            return {key: {"existed": False} for key in _MANAGED_SETTINGS_KEYS}
+        try:
+            payload = loads_jsonc(settings_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return {
+            key: ({"existed": True, "value": copy.deepcopy(payload[key])} if key in payload else {"existed": False})
+            for key in _MANAGED_SETTINGS_KEYS
+        }
+
+    @staticmethod
+    def _restore_settings_file(
+        settings_path: Path,
+        backup_file: Path,
+        existed_before: bool,
+        key_entries: Mapping[str, Any] | None,
+    ) -> bool:
+        if isinstance(key_entries, Mapping) and settings_path.is_file():
+            try:
+                raw_text = settings_path.read_text(encoding="utf-8")
+                current = loads_jsonc(raw_text)
+            except (OSError, ValueError, json.JSONDecodeError):
+                current = None
+            if isinstance(current, dict):
+                updates = {
+                    key: copy.deepcopy(entry["value"])
+                    for key, entry in key_entries.items()
+                    if isinstance(entry, Mapping) and entry.get("existed")
+                }
+                removals = [
+                    key
+                    for key, entry in key_entries.items()
+                    if isinstance(entry, Mapping) and not entry.get("existed")
+                ]
+                expected = dict(current)
+                for key in removals:
+                    expected.pop(key, None)
+                expected.update(updates)
+                if not existed_before and not expected:
+                    settings_path.unlink()
+                    return not settings_path.exists()
+                atomic_write_text(
+                    settings_path,
+                    patch_jsonc_object(raw_text, updates, removals, expected_dict=expected),
+                )
+                try:
+                    verified = loads_jsonc(settings_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError, json.JSONDecodeError):
+                    return False
+                return isinstance(verified, dict) and all(
+                    (key in verified and verified[key] == updates[key] and type(verified[key]) is type(updates[key]))
+                    for key in updates
+                ) and all(key not in verified for key in removals)
+        if existed_before:
+            backup_bytes = backup_file.read_bytes()
+            atomic_write_bytes(settings_path, backup_bytes)
+            return settings_path.read_bytes() == backup_bytes
+        if settings_path.exists():
+            settings_path.unlink()
+        return not settings_path.exists()
 
     def detect(self) -> AdapterResult:
         if self.spec.resolution_status != "ok":
@@ -477,6 +614,7 @@ class VSCodeFamilyAdapter:
             primary_exists = self.spec.settings_path.is_file()
             if primary_exists:
                 shutil.copy2(self.spec.settings_path, backup_dir / f"{self.target}-settings.json")
+            primary_entries = self._snapshot_settings_entries(self.spec.settings_path)
             self._snapshot_extension_state(backup_dir)
             mirror_states = []
             for idx, (mirror_settings, mirror_extensions) in enumerate(self.spec.mirror_targets):
@@ -484,9 +622,10 @@ class VSCodeFamilyAdapter:
                 m_exists = mirror_settings.is_file()
                 if m_exists:
                     shutil.copy2(mirror_settings, backup_dir / f"{prefix}-settings.json")
+                m_entries = self._snapshot_settings_entries(mirror_settings)
                 self._snapshot_extension_state_in(mirror_extensions, backup_dir, prefix)
-                mirror_states.append({"index": idx, "settings_exists": m_exists})
-            state_payload = {"primary_exists": primary_exists, "mirrors": mirror_states}
+                mirror_states.append({"index": idx, "settings_exists": m_exists, "settings_entries": m_entries})
+            state_payload = {"primary_exists": primary_exists, "primary_entries": primary_entries, "mirrors": mirror_states}
             atomic_write_text(backup_dir / f"{self.target}-settings-state.json", json.dumps(state_payload, sort_keys=True))
             return AdapterResult(
                 self.target,
@@ -509,14 +648,10 @@ class VSCodeFamilyAdapter:
             self.spec.extensions_dir.mkdir(parents=True, exist_ok=True)
             self._remove_installed_extension_state()
             active_mode = self.app_mode or plan.mode
-            settings["workbench.colorTheme"] = self._theme_label(active_mode)
-            settings["workbench.preferredDarkColorTheme"] = self._theme_label("dark")
-            settings["workbench.preferredLightColorTheme"] = self._theme_label("light")
-            settings["window.autoDetectColorScheme"] = True
-            self.spec.settings_path.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write_text(
+            settings = self._apply_theme_settings_to(
                 self.spec.settings_path,
-                json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
+                active_mode,
+                allow_missing=(self.spec.resolution_source == "standard"),
             )
             command = [
                 str(self.spec.executable),
@@ -646,41 +781,38 @@ class VSCodeFamilyAdapter:
         state_path = backup_dir / f"{self.target}-settings-state.json"
         backup = backup_dir / f"{self.target}-settings.json"
         primary_existed = True
+        primary_entries: Mapping[str, Any] | None = None
         mirror_states: list[dict[str, Any]] = []
         if state_path.is_file():
             try:
                 loaded_state = json.loads(state_path.read_text(encoding="utf-8"))
                 primary_existed = bool(loaded_state.get("primary_exists", True))
+                raw_primary_entries = loaded_state.get("primary_entries")
+                if isinstance(raw_primary_entries, dict):
+                    primary_entries = raw_primary_entries
                 mirror_states = list(loaded_state.get("mirrors", []))
             except (OSError, json.JSONDecodeError):
                 primary_existed = True
         if primary_existed and not backup.is_file():
             return AdapterResult(self.target, "failed", False, False, f"{self.target} settings backup not found")
         try:
-            if primary_existed:
-                self.spec.settings_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(backup, self.spec.settings_path)
-                primary_settings_restored = self.spec.settings_path.read_bytes() == backup.read_bytes()
-            else:
-                if self.spec.settings_path.exists():
-                    self.spec.settings_path.unlink()
-                primary_settings_restored = not self.spec.settings_path.exists()
+            primary_settings_restored = self._restore_settings_file(
+                self.spec.settings_path,
+                backup,
+                primary_existed,
+                primary_entries,
+            )
             extensions_restored = self._restore_extension_state(backup_dir)
             restored = primary_settings_restored and extensions_restored
 
-            mirror_state_by_idx = {int(item["index"]): bool(item.get("settings_exists", True)) for item in mirror_states if isinstance(item, dict) and "index" in item}
+            mirror_state_by_idx = {int(item["index"]): item for item in mirror_states if isinstance(item, dict) and "index" in item}
             for idx, (mirror_settings, mirror_extensions) in enumerate(self.spec.mirror_targets):
                 prefix = f"{self.target}-mirror-{idx}"
                 m_backup = backup_dir / f"{prefix}-settings.json"
-                m_existed = mirror_state_by_idx.get(idx, m_backup.is_file())
-                if m_existed and m_backup.is_file():
-                    mirror_settings.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(m_backup, mirror_settings)
-                    m_settings_ok = mirror_settings.read_bytes() == m_backup.read_bytes()
-                else:
-                    if mirror_settings.exists():
-                        mirror_settings.unlink()
-                    m_settings_ok = not mirror_settings.exists()
+                m_state = mirror_state_by_idx.get(idx, {})
+                m_existed = bool(m_state.get("settings_exists", m_backup.is_file()))
+                m_entries = m_state.get("settings_entries") if isinstance(m_state.get("settings_entries"), dict) else None
+                m_settings_ok = self._restore_settings_file(mirror_settings, m_backup, m_existed, m_entries)
                 m_ext_ok = self._restore_extension_state_in(mirror_extensions, backup_dir, prefix)
                 restored = restored and m_settings_ok and m_ext_ok
             return AdapterResult(self.target, "ok" if restored else "failed", True, restored, f"{self.target} settings and extension restored")

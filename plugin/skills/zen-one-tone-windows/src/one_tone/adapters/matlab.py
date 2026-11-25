@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import io
 import json
@@ -17,7 +16,7 @@ from ..inventory import inventory_groups, inventory_report
 from ..palette import _oklch_color, _oklch_components, contrast_ratio, parse_hex_color
 from ..plan import Plan
 from ..storage import atomic_write_text
-from .base import AdapterResult, field_capabilities
+from .base import AdapterResult, close_windows_process, create_kernel32, field_capabilities, probe_windows_process, verify_unredirected_path
 
 try:
     import winreg
@@ -28,7 +27,6 @@ MATLAB_MLSETTINGS_SCHEMA_V1 = "matlab-mlsettings-v1"
 _EXPECTED_SCHEMA_JSON = "com.mathworks/settings/jsonschema/1-1-0"
 _MIN_RELEASE = (2025, 0)
 _RELEASE_PATTERN = re.compile(r"^R(\d{4})([ab])$", re.IGNORECASE)
-_ERROR_NO_MORE_FILES = 18
 
 _SCHEMA_ENTRY = "fsroot/schema.json"
 _MANIFEST_ENTRY = "metadata/filesystemManifest.xml"
@@ -194,89 +192,17 @@ def _resolve_abs_path(path: Path) -> Path:
 
 def _verify_unredirected_path(frozen_path: Path) -> tuple[bool, Path | None, str]:
     """Ensure a frozen absolute path has not been redirected via a symlink or junction."""
-    if not frozen_path.is_absolute():
-        return False, None, f"MATLAB settings path must be absolute: {frozen_path}"
-    expected_norm = os.path.normcase(os.path.normpath(str(frozen_path)))
-    if frozen_path.is_symlink():
-        return False, None, f"MATLAB settings path was redirected by a symlink: {frozen_path}"
-    try:
-        resolved = frozen_path.resolve(strict=True)
-    except OSError as error:
-        return False, None, f"MATLAB settings path unavailable: {error}"
-    actual_norm = os.path.normcase(os.path.normpath(str(resolved)))
-    if actual_norm != expected_norm:
-        return False, None, f"MATLAB settings path redirected from frozen path {frozen_path} to {resolved}"
-    return True, resolved, "ok"
+    return verify_unredirected_path(frozen_path, "MATLAB settings")
 
 
-def _create_kernel32() -> Any:
-    from ctypes import wintypes
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
-    kernel32.Process32FirstW.restype = wintypes.BOOL
-    kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
-    kernel32.Process32NextW.restype = wintypes.BOOL
-    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    kernel32.CloseHandle.restype = wintypes.BOOL
-    return kernel32
+_create_kernel32 = create_kernel32
 
 
 def probe_matlab_process() -> tuple[str, str]:
     """Probe whether MATLAB.exe is running on Windows (fail-closed -> 'unknown')."""
     if sys.platform != "win32":
         return "stopped", "non-windows host"
-    try:
-        from ctypes import wintypes
-
-        kernel32 = _create_kernel32()
-        th32cs_snapprocess = 0x00000002
-        invalid_handle = wintypes.HANDLE(-1).value
-
-        class PROCESSENTRY32W(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", wintypes.DWORD),
-                ("cntUsage", wintypes.DWORD),
-                ("th32ProcessID", wintypes.DWORD),
-                ("th32DefaultHeapID", ctypes.c_void_p),
-                ("th32ModuleID", wintypes.DWORD),
-                ("cntThreads", wintypes.DWORD),
-                ("th32ParentProcessID", wintypes.DWORD),
-                ("pcPriClassBase", ctypes.c_long),
-                ("dwFlags", wintypes.DWORD),
-                ("szExeFile", ctypes.c_wchar * 260),
-            ]
-
-        ctypes.set_last_error(0)
-        snapshot = kernel32.CreateToolhelp32Snapshot(th32cs_snapprocess, 0)
-        if not snapshot or snapshot == invalid_handle:
-            error_code = ctypes.get_last_error()
-            return "unknown", f"CreateToolhelp32Snapshot failed (Win32 error {error_code})"
-        try:
-            entry = PROCESSENTRY32W()
-            entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-            ctypes.set_last_error(0)
-            has_entry = bool(kernel32.Process32FirstW(snapshot, ctypes.byref(entry)))
-            if not has_entry:
-                error_code = ctypes.get_last_error()
-                if error_code == _ERROR_NO_MORE_FILES:
-                    return "stopped", "no matching process"
-                return "unknown", f"Process32FirstW failed (Win32 error {error_code})"
-            while has_entry:
-                if entry.szExeFile.casefold() == "matlab.exe":
-                    return "running", "MATLAB.exe process is running"
-                ctypes.set_last_error(0)
-                has_entry = bool(kernel32.Process32NextW(snapshot, ctypes.byref(entry)))
-            error_code = ctypes.get_last_error()
-            if error_code != _ERROR_NO_MORE_FILES:
-                return "unknown", f"Process32NextW failed (Win32 error {error_code})"
-            return "stopped", "MATLAB.exe is not running"
-        finally:
-            kernel32.CloseHandle(snapshot)
-    except (AttributeError, OSError, ValueError) as error:
-        return "unknown", f"Windows process enumeration failed: {error}"
+    return probe_windows_process("MATLAB.exe", kernel32_factory=_create_kernel32)
 
 
 def is_matlab_running() -> bool:
@@ -981,10 +907,18 @@ class MatlabAdapter:
         *,
         target_instance: Mapping[str, Any] | None = None,
         is_running_fn: Callable[[], bool] | None = None,
+        process_closer: Callable[[], tuple[bool, str]] | None = None,
         appdata: Path | None = None,
         registry_roots: list[tuple[str, Path]] | None = None,
     ) -> None:
+        self._custom_is_running = is_running_fn is not None
         self._is_running_fn = is_running_fn or is_matlab_running
+        if process_closer is not None:
+            self._process_closer: Callable[[], tuple[bool, str]] | None = process_closer
+        elif is_running_fn is None:
+            self._process_closer = lambda: close_windows_process("MATLAB.exe", process_probe=probe_matlab_process)
+        else:
+            self._process_closer = None
         self._expected_release: str | None = None
         self._expected_release_error: str | None = None
         if target_instance is not None:
@@ -1036,6 +970,44 @@ class MatlabAdapter:
         if running is not False:
             return True, "MATLAB is running or process status could not be verified; close MATLAB and retry to avoid settings overwrite on exit"
         return False, ""
+
+    def _ensure_process_stopped(self) -> tuple[bool, str, bool]:
+        if not self._custom_is_running:
+            try:
+                status, detail = probe_matlab_process()
+            except Exception as error:
+                return True, f"Unable to verify whether MATLAB is running ({error}); refusing to write settings", False
+            if status == "stopped":
+                return False, "", False
+            if status == "running" and self._process_closer is not None:
+                try:
+                    closed, close_detail = self._process_closer()
+                except Exception as error:
+                    return True, f"Unable to close running MATLAB ({error}); refusing to write settings", False
+                try:
+                    status, detail = probe_matlab_process()
+                except Exception as error:
+                    return True, f"Unable to verify MATLAB exit after shutdown ({error}); refusing to write settings", False
+                if closed and status == "stopped":
+                    return False, "", True
+                suffix = f" ({close_detail or detail})" if (close_detail or detail) else ""
+                return True, f"MATLAB remained running or could not be verified after shutdown attempt{suffix}; close MATLAB and retry to avoid settings overwrite on exit", False
+            suffix = f" ({detail})" if detail else ""
+            return True, f"MATLAB is running or process status could not be verified{suffix}; close MATLAB and retry to avoid settings overwrite on exit", False
+
+        blocked, reason = self._is_process_blocked()
+        if not blocked:
+            return False, "", False
+        if self._process_closer is not None:
+            try:
+                closed, close_detail = self._process_closer()
+            except Exception as error:
+                return True, f"Unable to close running MATLAB ({error}); refusing to write settings", False
+            still_blocked, after_reason = self._is_process_blocked()
+            if closed and not still_blocked:
+                return False, "", True
+            return True, close_detail or after_reason, False
+        return True, reason, False
 
     def _pre_replace_guard(
         self,
@@ -1162,7 +1134,7 @@ class MatlabAdapter:
         if not ok or path is None or release is None:
             return AdapterResult(self.target, "skipped", False, False, reason)
         instance = self._instance_payload(path, release)
-        blocked, block_reason = self._is_process_blocked()
+        blocked, block_reason, was_closed = self._ensure_process_stopped()
         if blocked:
             return AdapterResult(
                 self.target,
@@ -1173,6 +1145,11 @@ class MatlabAdapter:
                 version=MATLAB_MLSETTINGS_SCHEMA_V1,
                 metadata={"target_instance": instance},
             )
+        if was_closed:
+            ok, path, raw_bytes, entries, _, manifest_map, release, reason = self._load_checked()
+            if not ok or path is None or release is None:
+                return AdapterResult(self.target, "skipped", False, False, reason)
+            instance = self._instance_payload(path, release)
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
             (backup_dir / "matlab.mlsettings").write_bytes(raw_bytes)
@@ -1264,7 +1241,7 @@ class MatlabAdapter:
                     metadata={"aborted_before_write": True},
                 )
             return AdapterResult(self.target, "skipped", False, False, reason)
-        blocked, block_reason = self._is_process_blocked()
+        blocked, block_reason, was_closed = self._ensure_process_stopped()
         instance = self._instance_payload(path, release or str(self.release or ""))
         if blocked:
             return AdapterResult(
@@ -1276,6 +1253,21 @@ class MatlabAdapter:
                 version=MATLAB_MLSETTINGS_SCHEMA_V1,
                 metadata={"target_instance": instance},
             )
+        if was_closed:
+            ok, path, raw_bytes, entries, manifest_root, manifest_map, release, reason = self._load_checked()
+            if not ok or path is None or manifest_root is None:
+                if expected_snapshot is not None:
+                    return AdapterResult(
+                        self.target,
+                        "failed",
+                        False,
+                        False,
+                        f"MATLAB apply aborted before write (archive changed or invalid after closing MATLAB): {reason}",
+                        version=MATLAB_MLSETTINGS_SCHEMA_V1,
+                        metadata={"aborted_before_write": True},
+                    )
+                return AdapterResult(self.target, "skipped", False, False, reason)
+            instance = self._instance_payload(path, release or str(self.release or ""))
         if expected_snapshot is not None:
             actual_key = (
                 os.path.normcase(os.path.normpath(str(path))),
@@ -1545,7 +1537,7 @@ class MatlabAdapter:
         )
 
     def rollback(self, backup_dir: Path, metadata: Mapping[str, Any] | None = None) -> AdapterResult:
-        blocked, block_reason = self._is_process_blocked()
+        blocked, block_reason, _ = self._ensure_process_stopped()
         if blocked:
             return AdapterResult(
                 self.target,

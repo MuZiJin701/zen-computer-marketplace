@@ -28,5 +28,5 @@ uv run --project . one-tone --help
 
 - **Preview, backup, and rollback**: `preview` creates a read-only plan; `apply` snapshots each target before modifying it and automatically compensates failed targets. Undo anytime with `rollback --latest`.
 - **Personal settings preserved**: Fonts and unrelated preferences remain untouched. Turn off Windows "Automatically pick an accent color from my background" if Windows overrides the fixed accent color.
-- **Chrome themes**: Light and Dark unpacked extensions are generated and must be loaded manually in `chrome://extensions`.
+- **Chrome native dynamic theme**: Writes your Seed Color (`kTonalSpot`) into the active Google Chrome profile's `Preferences` with automatic Light/Dark system following and clears custom New Tab Page backgrounds (no unpacked extensions required). Running Chrome/MATLAB processes are automatically closed (graceful close up to 3s, then force termination without auto-relaunch) before writes; if Chrome Sync reverts to an older cloud theme, reset to the default theme once in Customize Chrome.
 - **Self-contained runtime**: This Skill runs independently of the repository root. See the [target matrix](skills/zen-one-tone-windows/references/targets.md) and [testing guide](../docs/testing.md) for details.

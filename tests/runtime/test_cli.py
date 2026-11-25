@@ -117,9 +117,11 @@ def test_verify_json_output_encodes_nested_binary_report_value(tmp_path, capsys,
     assert value == {"__one_tone_bytes__": "AP8="}
 
 
-def test_preview_writes_plan_without_creating_transaction(tmp_path, capsys):
+def test_preview_writes_plan_without_creating_transaction(tmp_path, capsys, monkeypatch):
     plans = tmp_path / "plans"
     transactions = tmp_path / "transactions"
+    monkeypatch.setenv("ONE_TONE_CHATGPT_APP_THEME_CONFIG", str(tmp_path / "missing-config.toml"))
+    monkeypatch.setenv("ONE_TONE_CHROME_PREFERENCES", str(tmp_path / "missing-chrome-preferences"))
 
     assert main([
         "preview", "#7C3AED", "--targets", "chatgpt-app,chrome",
@@ -368,5 +370,107 @@ def test_sync_and_rollback_latest_round_trip(tmp_path, capsys, monkeypatch):
     rollback_payload = json.loads(capsys.readouterr().out)
     assert rollback_payload["command"] == "rollback"
     assert rollback_payload["status"] == "ROLLED_BACK"
-    assert config_path.read_bytes() == original_config
-    assert storage_path.read_bytes() == original_storage
+    assert json.loads(config_path.read_text(encoding="utf-8")) == json.loads(original_config.decode("utf-8"))
+    assert json.loads(storage_path.read_text(encoding="utf-8")) == json.loads(original_storage.decode("utf-8"))
+
+
+def test_sync_preserves_skipped_verify_status_when_a_target_is_skipped(tmp_path, capsys, monkeypatch):
+    config_path = tmp_path / ".gemini" / "config" / "config.json"
+    storage_path = tmp_path / "Antigravity" / "app_storage.json"
+    config_path.parent.mkdir(parents=True)
+    storage_path.parent.mkdir(parents=True)
+    config_path.write_text(json.dumps({"userSettings": {"themeMode": "THEME_MODE_DARK"}}), encoding="utf-8")
+    storage_path.write_text(json.dumps({"hubSurfaceBackgroundColor": "#111111"}), encoding="utf-8")
+    monkeypatch.setenv("ONE_TONE_ANTIGRAVITY_CONFIG", str(config_path))
+    monkeypatch.setenv("ONE_TONE_ANTIGRAVITY_STORAGE", str(storage_path))
+    monkeypatch.setenv("ONE_TONE_CHROME_PREFERENCES", str(tmp_path / "missing-chrome" / "Preferences"))
+
+    assert main([
+        "sync", "#22C55E", "--targets", "antigravity,chrome",
+        "--plans-dir", str(tmp_path / "plans"),
+        "--transactions-dir", str(tmp_path / "transactions"),
+        "--state-dir", str(tmp_path / "state"),
+        "--output", "json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "PARTIAL"
+    assert payload["verify_status"] == "partial"
+    by_target = {item["target"]: item for item in payload["verify_targets"]}
+    assert by_target["antigravity"]["status"] == "ok"
+    assert by_target["antigravity"]["verified"] is True
+    assert by_target["chrome"]["status"] == "skipped"
+    assert by_target["chrome"]["verified"] is False
+
+
+def test_chrome_cli_preview_apply_verify_rollback_round_trip(tmp_path, capsys, monkeypatch):
+    user_data = tmp_path / "LocalAppData" / "Google" / "Chrome" / "User Data"
+    user_data.mkdir(parents=True)
+    (user_data / "Local State").write_text(json.dumps({"profile": {"last_used": "Profile 1"}}), encoding="utf-8")
+    pref_path = user_data / "Profile 1" / "Preferences"
+    pref_path.parent.mkdir(parents=True)
+    pref_path.write_text(
+        json.dumps({
+            "bookmark_bar": {"show_on_all_tabs": True},
+            "extensions": {"theme": {"id": "old-ext", "pack": "C:\\old"}},
+        }),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("ONE_TONE_CHROME_PREFERENCES", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
+    monkeypatch.setattr("one_tone.adapters.chrome.probe_chrome_process", lambda: ("stopped", "test"))
+
+    plans_dir = tmp_path / "plans"
+    tx_dir = tmp_path / "transactions"
+    state_dir = tmp_path / "state"
+
+    assert main([
+        "preview", "#22C55E", "--targets", "chrome",
+        "--plans-dir", str(plans_dir),
+        "--transactions-dir", str(tx_dir),
+        "--state-dir", str(state_dir),
+        "--output", "json",
+    ]) == 0
+    preview_payload = json.loads(capsys.readouterr().out)
+    plan_id = preview_payload["plan_id"]
+    assert preview_payload["target_instances"]["chrome"]["profile"] == "Profile 1"
+
+    assert main([
+        "apply", plan_id, "--confirm",
+        "--plans-dir", str(plans_dir),
+        "--transactions-dir", str(tx_dir),
+        "--state-dir", str(state_dir),
+        "--output", "json",
+    ]) == 0
+    apply_payload = json.loads(capsys.readouterr().out)
+    assert apply_payload["status"] == "APPLIED"
+    assert apply_payload["targets"][0]["status"] == "ok"
+
+    assert main([
+        "verify", plan_id,
+        "--plans-dir", str(plans_dir),
+        "--state-dir", str(state_dir),
+        "--output", "json",
+    ]) == 0
+    verify_payload = json.loads(capsys.readouterr().out)
+    assert verify_payload["status"] == "ok"
+    assert verify_payload["targets"][0]["verified"] is True
+
+    updated = json.loads(pref_path.read_text(encoding="utf-8"))
+    updated["user_note"] = "keep-after-apply"
+    pref_path.write_text(json.dumps(updated), encoding="utf-8")
+
+    assert main([
+        "rollback", "--latest",
+        "--transactions-dir", str(tx_dir),
+        "--state-dir", str(state_dir),
+        "--output", "json",
+    ]) == 0
+    rb_payload = json.loads(capsys.readouterr().out)
+    assert rb_payload["status"] == "ROLLED_BACK"
+
+    restored = json.loads(pref_path.read_text(encoding="utf-8"))
+    assert restored["user_note"] == "keep-after-apply"
+    assert restored["bookmark_bar"] == {"show_on_all_tabs": True}
+    assert restored["extensions"]["theme"] == {"id": "old-ext", "pack": "C:\\old"}
+    assert "browser" not in restored

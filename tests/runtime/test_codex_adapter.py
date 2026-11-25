@@ -247,6 +247,16 @@ def test_codex_apply_preserves_existing_font_values_while_repairing_other_mode(t
     assert themes["appearanceDarkChromeTheme"]["fonts"] == {"ui": "Inter", "code": "JetBrains Mono"}
 
 
+def test_codex_frozen_target_instance_ignores_env_changes(tmp_path, monkeypatch):
+    frozen_path = write_codex_v1_fixture(tmp_path / "frozen" / "config.toml")
+    other_path = write_codex_v1_fixture(tmp_path / "other" / "config.toml")
+    monkeypatch.setenv("ONE_TONE_CHATGPT_APP_THEME_CONFIG", str(other_path))
+
+    adapter = CodexAdapter(target_instance={"status": "ok", "config_path": str(frozen_path)})
+    assert adapter.config_path == frozen_path
+    assert adapter.target_instance()["config_path"] == str(frozen_path)
+
+
 def test_codex_apply_preserves_existing_empty_fonts_tables(tmp_path):
     path = write_codex_v1_fixture(tmp_path / "config.toml")
     path.write_text(path.read_text(encoding="utf-8").replace('editor = "keep"\n', ""), encoding="utf-8")

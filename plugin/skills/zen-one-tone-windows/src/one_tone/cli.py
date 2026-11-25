@@ -5,11 +5,12 @@ import json
 import os
 import shutil
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Sequence
 
 from .adapters import (
+    AdapterResult,
     AntigravityAdapter,
     ChromeAdapter,
     CodexAdapter,
@@ -24,7 +25,7 @@ from .editor_instance import EditorSpec, editor_spec_from_plan, resolve_editor_s
 from .adapters.antigravity import _generated_values as _antigravity_generated_values, detect_windows_app_mode
 from .adapters.matlab import _generated_values as _matlab_generated_values
 from .adapters.windows import WindowsDesktopBackend, WindowsRegistryBackend
-from .adapters.chrome import _manifest
+from .adapters.chrome import _generated_values as _chrome_generated_values
 from .adapters.codex import _theme_updates
 from .adapters.windows import _theme_registry_values
 from .adapters.vscode_family import build_theme_json
@@ -257,15 +258,17 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
             EditorSpec("antigravity-ide", "", Path(), Path(), artifacts_dir=state_dir / "antigravity-ide-artifacts"),
         )
     chatgpt_app_path = os.environ.get("ONE_TONE_CHATGPT_APP_THEME_CONFIG")
+    chatgpt_app_instance = target_instances.get("chatgpt-app") if target_instances is not None else None
     antigravity_instance = target_instances.get("antigravity") if target_instances is not None else None
     matlab_instance = (
         target_instances.get("matlab", {"status": "skipped", "reason": "MATLAB target instance missing from Plan"})
         if target_instances is not None
         else None
     )
-    chrome_preferences = _configured_or_first(
-        "ONE_TONE_CHROME_PREFERENCES",
-        [localappdata / "Google/Chrome/User Data/Default/Preferences"],
+    chrome_instance = (
+        target_instances.get("chrome", {"status": "skipped", "reason": "Chrome target instance missing from Plan"})
+        if target_instances is not None
+        else None
     )
     app_mode = detect_windows_app_mode()
     registry = {}
@@ -288,7 +291,7 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
         elif target == "antigravity-ide":
             registry[target] = VSCodeFamilyAdapter(antigravity_ide_spec, app_mode=app_mode)
         elif target == "chatgpt-app":
-            registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None)
+            registry[target] = CodexAdapter(Path(chatgpt_app_path) if chatgpt_app_path else None, target_instance=chatgpt_app_instance)
         elif target == "antigravity":
             registry[target] = AntigravityAdapter(target_instance=antigravity_instance)
         elif target == "matlab":
@@ -297,7 +300,10 @@ def build_target_adapters(targets, state_dir: Path, target_instances: dict[str, 
                 appdata=appdata,
             )
         elif target == "chrome":
-            registry[target] = ChromeAdapter(state_dir / "chrome-themes", chrome_preferences if chrome_preferences.is_file() else None)
+            registry[target] = ChromeAdapter(
+                target_instance=chrome_instance,
+                localappdata=localappdata,
+            )
         else:
             registry[target] = UnsupportedAdapter(target)
     return registry
@@ -310,8 +316,7 @@ def _preview_values(plan: Plan, target: str) -> dict[str, Any]:
         if target in {"vscode", "trae", "antigravity-ide"}:
             generated = build_theme_json(plan, "One Tone", mode, baseline=plan.target_instances.get(target, {}).get("color_baseline", ""))["colors"]
         elif target == "chrome":
-            theme = _manifest(plan, mode)["theme"]
-            generated = {**theme["colors"], **{f"{group}.{key}": value for group in ("tints", "properties") for key, value in theme[group].items()}}
+            generated = _chrome_generated_values(plan)
         elif target == "chatgpt-app":
             generated = {f"{table.removeprefix('desktop.')}.{key}": value for table, entries in _theme_updates(plan.palettes).items() for key, value in entries.items()}
             generated["appearanceTheme"] = "system"
@@ -388,7 +393,7 @@ def _preview(args: argparse.Namespace) -> int:
     for target, result in detected.items():
         print(f"- {target}: {result.status} — {result.message}")
     print("Validation:")
-    print("- Appearance policy: solid Windows/Terminal/ChatGPT windows; preserve fonts and Windows modes; Chrome activation remains manual")
+    print("- Appearance policy: solid Windows/Terminal/ChatGPT windows; preserve fonts and Windows modes; Chrome follows system Light/Dark via native Preferences")
     print("- Contrast: PASS")
     print("- Appearance safety: PASS")
     print("Field regions:")
@@ -451,7 +456,47 @@ def _sync(args: argparse.Namespace) -> int:
     store = TransactionStore(args.transactions_dir)
     record = apply_plan(plan, apply_adapters, store, confirm=True)
     removed = store.prune(keep=args.keep_transactions, preserve={record.id})
-    verified = verify_plan(plan, apply_adapters)
+    verified: dict[str, AdapterResult] = {}
+    for target in plan.targets:
+        operations = record.results.get(target, [])
+        verify_op = next((item for item in reversed(operations) if item.get("operation") == "verify"), None)
+        if verify_op is not None:
+            verified[target] = AdapterResult(
+                target=target,
+                status=str(verify_op.get("status", "failed")),
+                changed=bool(verify_op.get("changed", False)),
+                verified=bool(verify_op.get("verified", False)),
+                message=str(verify_op.get("message", "")),
+                requires_user_action=bool(verify_op.get("requires_user_action", False)),
+                version=verify_op.get("version"),
+                metadata=dict(verify_op.get("metadata", {})) if isinstance(verify_op.get("metadata"), dict) else {},
+            )
+        elif operations:
+            latest = operations[-1]
+            latest_status = str(latest.get("status", "skipped"))
+            source_op = latest
+            if latest.get("operation") == "auto_rollback":
+                source_op = next(
+                    (
+                        item
+                        for item in reversed(operations[:-1])
+                        if item.get("operation") != "auto_rollback"
+                        and (item.get("status") not in {"ok", "partial"} or item.get("verified") is False)
+                    ),
+                    latest,
+                )
+            verified[target] = AdapterResult(
+                target=target,
+                status="skipped" if latest_status == "skipped" else "failed",
+                changed=False,
+                verified=False,
+                message=str(source_op.get("message", "")),
+                requires_user_action=bool(source_op.get("requires_user_action", False)),
+                version=source_op.get("version"),
+                metadata=dict(source_op.get("metadata", {})) if isinstance(source_op.get("metadata"), dict) else {},
+            )
+        else:
+            verified[target] = verify_plan(replace(plan, targets=(target,)), apply_adapters)[target]
     verify_status = _aggregate_status(verified)
     ok = record.status in {TransactionStatus.APPLIED, TransactionStatus.PARTIAL} and verify_status in {"ok", "partial"}
     if args.output == "json":

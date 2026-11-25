@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import shutil
@@ -9,7 +10,7 @@ from typing import Any, Mapping
 from ..inventory import inventory_groups, inventory_report
 from ..palette import mode_independent_surface
 from ..plan import Plan
-from ..storage import atomic_write_text
+from ..storage import atomic_write_bytes, atomic_write_text
 from .base import AdapterResult, field_capabilities
 
 try:
@@ -185,19 +186,54 @@ class AntigravityAdapter:
         )
 
     def snapshot(self, backup_dir: Path) -> AdapterResult:
-        ok, _, _, reason = self._inspect()
-        if not ok:
+        ok, config_payload, storage_payload, reason = self._inspect()
+        if not ok or config_payload is None or storage_payload is None:
             return AdapterResult(self.target, "skipped", False, False, reason)
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
-            state = {
-                "config_exists": self.config_path.is_file(),
-                "storage_exists": self.storage_path.is_file(),
+            config_exists = self.config_path.is_file()
+            storage_exists = self.storage_path.is_file()
+            user_settings = config_payload.get("userSettings") if isinstance(config_payload.get("userSettings"), dict) else {}
+            config_containers = {
+                "userSettings": isinstance(config_payload.get("userSettings"), dict),
+                "customThemeSeedsLight": isinstance(user_settings.get("customThemeSeedsLight"), dict),
+                "customThemeSeedsDark": isinstance(user_settings.get("customThemeSeedsDark"), dict),
             }
-            atomic_write_text(backup_dir / "antigravity-state.json", json.dumps(state, sort_keys=True))
-            if state["config_exists"]:
+            config_entries: dict[str, Any] = {
+                "userSettings.themeMode": (
+                    {"existed": True, "value": copy.deepcopy(user_settings["themeMode"])}
+                    if "themeMode" in user_settings
+                    else {"existed": False}
+                )
+            }
+            for table in ("customThemeSeedsLight", "customThemeSeedsDark"):
+                seeds = user_settings.get(table) if isinstance(user_settings.get(table), dict) else {}
+                for key in _SEED_KEYS:
+                    dotted = f"userSettings.{table}.{key}"
+                    config_entries[dotted] = (
+                        {"existed": True, "value": copy.deepcopy(seeds[key])}
+                        if key in seeds
+                        else {"existed": False}
+                    )
+            storage_entries = {
+                "hubSurfaceBackgroundColor": (
+                    {"existed": True, "value": copy.deepcopy(storage_payload["hubSurfaceBackgroundColor"])}
+                    if "hubSurfaceBackgroundColor" in storage_payload
+                    else {"existed": False}
+                )
+            }
+            state = {
+                "schema": ANTIGRAVITY_CONFIG_SCHEMA_V1,
+                "config_exists": config_exists,
+                "storage_exists": storage_exists,
+                "config_containers": config_containers,
+                "config_entries": config_entries,
+                "storage_entries": storage_entries,
+            }
+            atomic_write_text(backup_dir / "antigravity-state.json", json.dumps(state, ensure_ascii=False, sort_keys=True))
+            if config_exists:
                 shutil.copy2(self.config_path, backup_dir / "antigravity-config.json")
-            if state["storage_exists"]:
+            if storage_exists:
                 shutil.copy2(self.storage_path, backup_dir / "antigravity-storage.json")
             return AdapterResult(
                 self.target,
@@ -273,31 +309,116 @@ class AntigravityAdapter:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             config_backup = backup_dir / "antigravity-config.json"
             storage_backup = backup_dir / "antigravity-storage.json"
-            if state.get("config_exists"):
-                if not config_backup.is_file():
-                    return AdapterResult(self.target, "failed", False, False, "Antigravity config backup not found", version=ANTIGRAVITY_CONFIG_SCHEMA_V1)
-                self.config_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(config_backup, self.config_path)
-            elif self.config_path.exists():
-                self.config_path.unlink()
-            if state.get("storage_exists"):
-                if not storage_backup.is_file():
-                    return AdapterResult(self.target, "failed", False, False, "Antigravity storage backup not found", version=ANTIGRAVITY_CONFIG_SCHEMA_V1)
-                self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(storage_backup, self.storage_path)
-            elif self.storage_path.exists():
-                self.storage_path.unlink()
-            config_restored = (
-                (self.config_path.is_file() and self.config_path.read_bytes() == config_backup.read_bytes())
-                if state.get("config_exists")
-                else not self.config_path.exists()
-            )
-            storage_restored = (
-                (self.storage_path.is_file() and self.storage_path.read_bytes() == storage_backup.read_bytes())
-                if state.get("storage_exists")
-                else not self.storage_path.exists()
-            )
-            restored = config_restored and storage_restored
+            config_entries = state.get("config_entries")
+            storage_entries = state.get("storage_entries")
+            config_containers = state.get("config_containers") or {}
+
+            if isinstance(config_entries, dict) and isinstance(storage_entries, dict):
+                current_config = _load_json_object(self.config_path) if self.config_path.is_file() else {}
+                if current_config is None:
+                    return AdapterResult(self.target, "failed", False, False, "Antigravity rollback aborted: current config.json is invalid", version=ANTIGRAVITY_CONFIG_SCHEMA_V1)
+                current_storage = _load_json_object(self.storage_path) if self.storage_path.is_file() else {}
+                if current_storage is None:
+                    return AdapterResult(self.target, "failed", False, False, "Antigravity rollback aborted: current app_storage.json is invalid", version=ANTIGRAVITY_CONFIG_SCHEMA_V1)
+                restored_config = copy.deepcopy(current_config)
+                user_settings = dict(restored_config.get("userSettings") or {}) if isinstance(restored_config.get("userSettings"), dict) else {}
+                tm_state = config_entries.get("userSettings.themeMode") or {}
+                if tm_state.get("existed"):
+                    user_settings["themeMode"] = copy.deepcopy(tm_state["value"])
+                else:
+                    user_settings.pop("themeMode", None)
+                for table in ("customThemeSeedsLight", "customThemeSeedsDark"):
+                    seeds = dict(user_settings.get(table) or {}) if isinstance(user_settings.get(table), dict) else {}
+                    for key in _SEED_KEYS:
+                        entry = config_entries.get(f"userSettings.{table}.{key}") or {}
+                        if entry.get("existed"):
+                            seeds[key] = copy.deepcopy(entry["value"])
+                        else:
+                            seeds.pop(key, None)
+                    if seeds or config_containers.get(table) is True:
+                        user_settings[table] = seeds
+                    else:
+                        user_settings.pop(table, None)
+                if user_settings or config_containers.get("userSettings") is True:
+                    restored_config["userSettings"] = user_settings
+                else:
+                    restored_config.pop("userSettings", None)
+
+                restored_storage = copy.deepcopy(current_storage)
+                hub_state = storage_entries.get("hubSurfaceBackgroundColor") or {}
+                if hub_state.get("existed"):
+                    restored_storage["hubSurfaceBackgroundColor"] = copy.deepcopy(hub_state["value"])
+                else:
+                    restored_storage.pop("hubSurfaceBackgroundColor", None)
+
+                if not state.get("config_exists") and not restored_config:
+                    if self.config_path.exists():
+                        self.config_path.unlink()
+                    config_restored = not self.config_path.exists()
+                else:
+                    atomic_write_text(self.config_path, json.dumps(restored_config, ensure_ascii=False, indent=2) + "\n")
+                    verified_cfg = _load_json_object(self.config_path)
+                    verified_us = verified_cfg.get("userSettings") if isinstance(verified_cfg, dict) and isinstance(verified_cfg.get("userSettings"), dict) else {}
+                    config_restored = (
+                        verified_cfg is not None
+                        and (
+                            (verified_us.get("themeMode") == tm_state.get("value"))
+                            if tm_state.get("existed")
+                            else ("themeMode" not in verified_us)
+                        )
+                        and all(
+                            (
+                                isinstance(verified_us.get(table), dict)
+                                and key in verified_us[table]
+                                and verified_us[table][key] == config_entries[f"userSettings.{table}.{key}"]["value"]
+                            )
+                            if (config_entries.get(f"userSettings.{table}.{key}") or {}).get("existed")
+                            else (
+                                not isinstance(verified_us.get(table), dict)
+                                or key not in verified_us[table]
+                            )
+                            for table in ("customThemeSeedsLight", "customThemeSeedsDark")
+                            for key in _SEED_KEYS
+                        )
+                    )
+
+                if not state.get("storage_exists") and not restored_storage:
+                    if self.storage_path.exists():
+                        self.storage_path.unlink()
+                    storage_restored = not self.storage_path.exists()
+                else:
+                    atomic_write_text(self.storage_path, json.dumps(restored_storage, ensure_ascii=False, indent=2) + "\n")
+                    verified_storage = _load_json_object(self.storage_path)
+                    storage_restored = verified_storage is not None and (
+                        ("hubSurfaceBackgroundColor" in verified_storage and verified_storage["hubSurfaceBackgroundColor"] == hub_state["value"])
+                        if hub_state.get("existed")
+                        else ("hubSurfaceBackgroundColor" not in verified_storage)
+                    )
+                restored = config_restored and storage_restored
+            else:
+                if state.get("config_exists"):
+                    if not config_backup.is_file():
+                        return AdapterResult(self.target, "failed", False, False, "Antigravity config backup not found", version=ANTIGRAVITY_CONFIG_SCHEMA_V1)
+                    atomic_write_bytes(self.config_path, config_backup.read_bytes())
+                elif self.config_path.exists():
+                    self.config_path.unlink()
+                if state.get("storage_exists"):
+                    if not storage_backup.is_file():
+                        return AdapterResult(self.target, "failed", False, False, "Antigravity storage backup not found", version=ANTIGRAVITY_CONFIG_SCHEMA_V1)
+                    atomic_write_bytes(self.storage_path, storage_backup.read_bytes())
+                elif self.storage_path.exists():
+                    self.storage_path.unlink()
+                config_restored = (
+                    (self.config_path.is_file() and self.config_path.read_bytes() == config_backup.read_bytes())
+                    if state.get("config_exists")
+                    else not self.config_path.exists()
+                )
+                storage_restored = (
+                    (self.storage_path.is_file() and self.storage_path.read_bytes() == storage_backup.read_bytes())
+                    if state.get("storage_exists")
+                    else not self.storage_path.exists()
+                )
+                restored = config_restored and storage_restored
             return AdapterResult(
                 self.target,
                 "ok" if restored else "failed",

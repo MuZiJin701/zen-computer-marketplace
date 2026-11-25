@@ -6,11 +6,19 @@ from one_tone.palette import generate_palette
 from one_tone.plan import PlanIntegrityError, compute_plan_hash, create_plan, load_plan, save_plan
 
 
+def _chrome_instance(tmp_path):
+    pref = tmp_path / "Google" / "Chrome" / "User Data" / "Default" / "Preferences"
+    pref.parent.mkdir(parents=True, exist_ok=True)
+    pref.write_text(json.dumps({"browser": {"theme": {}}}), encoding="utf-8")
+    return pref, {"status": "ok", "preferences_path": str(pref), "profile": "Default", "source": "explicit"}
+
+
 def test_old_plan_requires_preview_without_blocking_historical_rollback(tmp_path):
     from one_tone.transaction import TransactionStore, apply_plan
     from one_tone.adapters.chrome import ChromeAdapter
-    plan = create_plan("#22C55E", ["chrome"])
-    adapter = ChromeAdapter(tmp_path / "themes")
+    pref, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#22C55E", ["chrome"], target_instances={"chrome": instance})
+    adapter = ChromeAdapter(preferences_path=pref, process_probe=lambda: ("stopped", "test"))
     store = TransactionStore(tmp_path / "transactions")
     record = apply_plan(plan, {"chrome": adapter}, store, confirm=True)
     payload = plan.to_dict()
@@ -19,11 +27,12 @@ def test_old_plan_requires_preview_without_blocking_historical_rollback(tmp_path
     (tmp_path / f"{plan.id}.json").write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(PlanIntegrityError, match="Preview"):
         load_plan(plan.id, tmp_path)
-    assert store.rollback(record.id, {"chrome": ChromeAdapter(tmp_path / "themes")}).status.value == "ROLLED_BACK"
+    assert store.rollback(record.id, {"chrome": ChromeAdapter(process_probe=lambda: ("stopped", "test"))}).status.value == "ROLLED_BACK"
 
 
 def test_plan_round_trips_with_stable_hash(tmp_path):
-    plan = create_plan("#7C3AED", ["chrome", "windows"], plan_id="plan-test-001")
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#7C3AED", ["chrome", "windows"], plan_id="plan-test-001", target_instances={"chrome": instance})
     path = save_plan(plan, tmp_path)
     loaded = load_plan("plan-test-001", tmp_path)
 
@@ -76,14 +85,15 @@ def test_plan_rejects_filename_and_payload_id_mismatch(tmp_path):
 
 
 def test_plan_persists_both_mode_palettes_and_capabilities(tmp_path):
-    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-modes-001")
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-modes-001", target_instances={"chrome": instance})
     save_plan(plan, tmp_path)
     loaded = load_plan("plan-modes-001", tmp_path)
 
     assert set(loaded.palettes) == {"light", "dark"}
     assert loaded.palettes["light"]["surface"] != loaded.seed_color
     assert loaded.palettes["dark"]["surface"] != loaded.seed_color
-    assert loaded.field_capabilities["chrome"]["frame"] == "supported"
+    assert loaded.field_capabilities["chrome"]["browser.theme.user_color2"] == "supported"
 
 
 def test_plan_includes_public_list_selection_backgrounds_for_trae():
@@ -137,7 +147,8 @@ def test_plan_persists_terminal_profile_discovery_inputs(tmp_path):
 
 
 def test_plan_persists_only_canonical_palettes_and_reads_a_copy(tmp_path):
-    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-canonical-001")
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-canonical-001", target_instances={"chrome": instance})
     payload = plan.to_dict()
 
     assert "palette" not in payload
@@ -150,7 +161,8 @@ def test_plan_persists_only_canonical_palettes_and_reads_a_copy(tmp_path):
 
 
 def test_plan_rejects_legacy_and_incomplete_palettes(tmp_path):
-    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-invalid-001")
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-invalid-001", target_instances={"chrome": instance})
     payload = plan.to_dict()
     payload["palette"] = payload["palettes"]["dark"]
     payload["hash"] = compute_plan_hash(payload)
@@ -177,7 +189,8 @@ def test_plan_rejects_legacy_and_incomplete_palettes(tmp_path):
 
 
 def test_plan_rejects_incoherent_mode_palettes(tmp_path):
-    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-incoherent-001")
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#7C3AED", ["chrome"], plan_id="plan-incoherent-001", target_instances={"chrome": instance})
     payload = plan.to_dict()
     payload["palettes"]["dark"] = generate_palette("#00A86B", "dark")
     payload["hash"] = compute_plan_hash(payload)
@@ -202,3 +215,64 @@ def test_old_v8_plan_is_rejected_for_v9_appearance_policy(tmp_path):
 
     with pytest.raises(PlanIntegrityError, match="appearance policy"):
         load_plan("plan-v8-001", tmp_path)
+
+
+def test_old_v9_plan_is_rejected_for_v10_appearance_policy(tmp_path):
+    """Old v9 plans must be recreated through Preview after Chrome native Preferences policy bump."""
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#22C55E", ["chrome"], plan_id="plan-v9-001", target_instances={"chrome": instance})
+    path = save_plan(plan, tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["appearance_policy"]["revision"] = "2026-11-24.v9"
+    payload["appearance_policy"].pop("chrome", None)
+    payload["appearance_policy"]["chrome_activation"] = "manual"
+    payload["hash"] = compute_plan_hash(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PlanIntegrityError, match="appearance policy"):
+        load_plan("plan-v9-001", tmp_path)
+
+
+def test_old_v10_plan_is_rejected_for_v11_appearance_policy(tmp_path):
+    """Old v10 plans must be recreated through Preview after v11 policy bump."""
+    _, instance = _chrome_instance(tmp_path)
+    plan = create_plan("#22C55E", ["chrome"], plan_id="plan-v10-001", target_instances={"chrome": instance})
+    path = save_plan(plan, tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["appearance_policy"]["revision"] = "2026-11-24.v10"
+    payload["appearance_policy"].pop("live_process_shutdown", None)
+    payload["appearance_policy"]["chrome"] = "native_preferences_system_following_tonal_spot"
+    payload["hash"] = compute_plan_hash(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PlanIntegrityError, match="appearance policy"):
+        load_plan("plan-v10-001", tmp_path)
+
+
+def test_plan_rejects_relative_chatgpt_app_target_instance(tmp_path):
+    relative_plan = create_plan(
+        "#22C55E",
+        ["chatgpt-app"],
+        plan_id="plan-codex-rel-inst-001",
+        target_instances={"chatgpt-app": {"status": "ok", "config_path": "relative/config.toml"}},
+    )
+    save_plan(relative_plan, tmp_path)
+    with pytest.raises(PlanIntegrityError, match="absolute"):
+        load_plan("plan-codex-rel-inst-001", tmp_path)
+
+
+def test_plan_rejects_missing_or_relative_chrome_target_instance(tmp_path):
+    missing_plan = create_plan("#22C55E", ["chrome"], plan_id="plan-chrome-missing-inst-001")
+    save_plan(missing_plan, tmp_path)
+    with pytest.raises(PlanIntegrityError, match="frozen chrome target instance"):
+        load_plan("plan-chrome-missing-inst-001", tmp_path)
+
+    relative_plan = create_plan(
+        "#22C55E",
+        ["chrome"],
+        plan_id="plan-chrome-rel-inst-001",
+        target_instances={"chrome": {"status": "ok", "preferences_path": "Default/Preferences", "profile": "Default"}},
+    )
+    save_plan(relative_plan, tmp_path)
+    with pytest.raises(PlanIntegrityError, match="absolute"):
+        load_plan("plan-chrome-rel-inst-001", tmp_path)

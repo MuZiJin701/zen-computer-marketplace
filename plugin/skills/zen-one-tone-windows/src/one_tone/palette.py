@@ -163,7 +163,7 @@ def _blend(first: str, second: str, second_weight: float) -> str:
 
 def _channel_luminance(channel: int) -> float:
     value = channel / 255
-    return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+    return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
 
 
 def relative_luminance(color: str) -> float:
@@ -411,8 +411,9 @@ def _contrast_safe_accent(
         reverse=True,
     )
     for candidate in ordered:
-        if contrast_ratio(_readable_foreground((candidate,), 4.5), candidate) >= 4.5:
-            return candidate
+        if max(contrast_ratio("#030712", candidate), contrast_ratio("#F8FAFC", candidate)) >= 4.5:
+            if contrast_ratio(_readable_foreground((candidate,), 4.5), candidate) >= 4.5:
+                return candidate
     return ordered[0]
 
 
@@ -645,6 +646,41 @@ def mode_independent_inactive_titlebar(seed_color: str, *, shell_accent: str | N
     return max(pool, key=lambda candidate: abs(_oklch_components(candidate)[0] - backdrop_l))
 
 
+def generate_mode_palettes(seed_color: str) -> dict[str, dict[str, str]]:
+    """Generate and validate explicit Light and Dark palettes in one shared pass."""
+    palettes = {
+        candidate_mode: _generate_palette(seed_color, candidate_mode)
+        for candidate_mode in ("light", "dark")
+    }
+    semantic_colors = tuple(
+        dict.fromkeys(
+            color
+            for candidate_palette in palettes.values()
+            for role in ("accent_text", "error_text", "warning_text", "success_text")
+            for color in (candidate_palette[role],)
+        )
+    )
+    prediction_hue = _prediction_hue(
+        seed_color,
+        semantic_colors,
+        tuple((candidate_palette["surface"], candidate_palette["foreground"]) for candidate_palette in palettes.values()),
+    )
+    for candidate_mode, palette in palettes.items():
+        mode_semantic_colors = tuple(palette[key] for key in ("accent_text", "error_text", "warning_text", "success_text"))
+        prediction_foreground = _prediction_foreground(
+            palette["surface"],
+            palette["foreground"],
+            prediction_hue,
+            mode_semantic_colors,
+        )
+        if prediction_foreground is not None:
+            palette["prediction_foreground"] = prediction_foreground
+        errors = validate_palette(palette, mode=candidate_mode)
+        if errors:
+            raise ValueError("Generated palette failed validation: " + "; ".join(errors))
+    return palettes
+
+
 def generate_palette(seed_color: str, mode: str | None = None) -> dict[str, str]:
     """Generate a mode palette; omitted mode preserves the v1 palette shape."""
     if mode is None:
@@ -682,37 +718,7 @@ def generate_palette(seed_color: str, mode: str | None = None) -> dict[str, str]
         return palette
     if mode not in {"light", "dark"}:
         raise ValueError("mode must be 'light' or 'dark'")
-    base_palettes = {
-        candidate_mode: _generate_palette(seed_color, candidate_mode)
-        for candidate_mode in ("light", "dark")
-    }
-    semantic_colors = tuple(
-        dict.fromkeys(
-            color
-            for candidate_palette in base_palettes.values()
-            for role in ("accent_text", "error_text", "warning_text", "success_text")
-            for color in (candidate_palette[role],)
-        )
-    )
-    prediction_hue = _prediction_hue(
-        seed_color,
-        semantic_colors,
-        tuple((candidate_palette["surface"], candidate_palette["foreground"]) for candidate_palette in base_palettes.values()),
-    )
-    palette = base_palettes[mode]
-    semantic_colors = tuple(palette[key] for key in ("accent_text", "error_text", "warning_text", "success_text"))
-    prediction_foreground = _prediction_foreground(
-        palette["surface"],
-        palette["foreground"],
-        prediction_hue,
-        semantic_colors,
-    )
-    if prediction_foreground is not None:
-        palette["prediction_foreground"] = prediction_foreground
-    errors = validate_palette(palette, mode=mode)
-    if errors:
-        raise ValueError("Generated palette failed validation: " + "; ".join(errors))
-    return palette
+    return generate_mode_palettes(seed_color)[mode]
 
 
 def validate_palette(palette: Mapping[str, str], *, mode: str | None = None) -> list[str]:

@@ -51,19 +51,6 @@ for name, (role, key, opacity, baselines, condition, text_class, background) in 
     _vscode_mappings.append(FieldMapping(name, role, key, region, None, text_class, background, opacity, tuple(baselines), condition))
 VSCODE_FIELD_MAPPINGS = tuple(_vscode_mappings)
 
-CHROME_COLOR_ROLES = {
-    **dict.fromkeys("frame frame_incognito".split(), "surface"),
-    **dict.fromkeys("frame_inactive frame_incognito_inactive background_tab_inactive background_tab_incognito_inactive ntp_background".split(), "light_mode_surface"),
-    **dict.fromkeys("background_tab background_tab_incognito".split(), "surface_subtle"),
-    "toolbar": "toolbar_surface", "omnibox_background": "surface_raised", "button_background": "accent",
-    **dict.fromkeys("toolbar_text toolbar_button_icon tab_background_text tab_background_text_incognito tab_text bookmark_text ntp_header ntp_text omnibox_text".split(), "foreground"),
-    **dict.fromkeys("tab_background_text_inactive tab_background_text_incognito_inactive".split(), "inactive_text"),
-    "ntp_link": "accent_text",
-}
-CHROME_TINT_ROLES = {"buttons": "accent", "background_tab": "surface_subtle",
-                     "frame": "surface", "frame_incognito": "surface",
-                     "frame_inactive": "light_mode_surface", "frame_incognito_inactive": "light_mode_surface"}
-
 
 def vscode_capabilities(baseline: str) -> dict[str, str]:
     return {mapping.field: "not-applicable" if mapping.condition.startswith("not-applicable")

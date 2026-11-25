@@ -487,3 +487,6 @@ def test_terminal_reads_jsonc_settings_with_comments_and_trailing_commas(tmp_pat
     assert adapter.detect().status in {"ok", "partial"}
     assert adapter.apply(plan).changed is True
     assert adapter.verify(plan).verified is True
+    applied_text = settings_path.read_text(encoding="utf-8")
+    assert "// Windows Terminal settings" in applied_text
+    assert "/* Block comment */" in applied_text

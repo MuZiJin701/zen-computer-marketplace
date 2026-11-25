@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from .palette import REQUIRED_KEYS, generate_palette, parse_hex_color, validate_mode_coherence, validate_palette
+from .palette import REQUIRED_KEYS, generate_mode_palettes, parse_hex_color, validate_mode_coherence, validate_palette
 from .inventory import expected_capabilities
 from .editor_instance import validate_editor_instance
 from .storage import atomic_write_text, validate_safe_component
 
 APPEARANCE_POLICY = {
-    "revision": "2026-11-24.v9",
+    "revision": "2026-11-25.v11",
     "windows.EnableTransparency": 0,
     "windows.taskbar_custom_mode": "shell_dark_preserve_app_mode",
     "windows.single_value_surfaces": "mode_independent_seed_derived_with_idesktopwallpaper",
@@ -24,9 +24,10 @@ APPEARANCE_POLICY = {
     "chatgpt-app.appearanceTheme": "system",
     "matlab.MATLABTheme": "System",
     "matlab.contrast_guard": "body>=7.0;syntax>=4.5-across-surface-and-highlights",
+    "chrome": "native_preferences_system_following_tonal_spot_clean_ntp",
+    "live_process_shutdown": "graceful_3s_then_force_no_relaunch",
     "fonts": "preserve; repair missing ChatGPT fonts tables only",
     "app_mode_auto_colorization_high_contrast": "preserve",
-    "chrome_activation": "manual",
 }
 
 
@@ -107,7 +108,7 @@ def create_plan(
     safe_plan_id = validate_safe_component(plan_id, "plan_id") if plan_id else _new_id("plan")
     if mode not in {"light", "dark"}:
         raise ValueError("mode must be 'light' or 'dark'")
-    palettes = {name: generate_palette(normalized_seed, name) for name in ("light", "dark")}
+    palettes = generate_mode_palettes(normalized_seed)
     coherence_errors = validate_mode_coherence(normalized_seed, palettes)
     if coherence_errors:
         raise ValueError("Generated palettes failed Mode coherence validation: " + "; ".join(coherence_errors))
@@ -210,6 +211,8 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
         raise PlanIntegrityError(f"Plan target instances are invalid for {plan_id}")
     if "matlab" in payload["targets"] and "matlab" not in target_instances:
         raise PlanIntegrityError(f"Plan is missing frozen matlab target instance for {plan_id}")
+    if "chrome" in payload["targets"] and "chrome" not in target_instances:
+        raise PlanIntegrityError(f"Plan is missing frozen chrome target instance for {plan_id}")
     for target, instance in target_instances.items():
         validate_safe_component(target, "target")
         if target not in payload["targets"] or not isinstance(instance, dict):
@@ -223,11 +226,21 @@ def load_plan(plan_id: str, plans_dir: Path) -> Plan:
             () if target == "windows"
             else ("settings_path",) if target == "terminal"
             else ("config_path", "storage_path") if target == "antigravity"
+            else ("config_path",) if target == "chatgpt-app"
             else ("settings_path", "release") if target == "matlab"
+            else ("preferences_path", "profile") if target == "chrome"
             else ("executable", "settings_path", "extensions_dir")
         )
         if target not in {"vscode", "trae", "antigravity-ide"} and status == "ok" and any(not isinstance(instance.get(key), str) for key in required_instance_keys):
             raise PlanIntegrityError(f"Plan target instance paths are invalid for {plan_id}")
+        if target == "chatgpt-app" and status == "ok":
+            if not Path(str(instance["config_path"])).is_absolute():
+                raise PlanIntegrityError(f"Plan chatgpt-app config_path must be absolute for {plan_id}")
+        if target == "chrome" and status == "ok":
+            if not Path(str(instance["preferences_path"])).is_absolute():
+                raise PlanIntegrityError(f"Plan chrome preferences_path must be absolute for {plan_id}")
+            if not str(instance["profile"]).strip():
+                raise PlanIntegrityError(f"Plan chrome profile is invalid for {plan_id}")
         if target == "matlab" and status == "ok":
             if not Path(str(instance["settings_path"])).is_absolute():
                 raise PlanIntegrityError(f"Plan matlab settings_path must be absolute for {plan_id}")
